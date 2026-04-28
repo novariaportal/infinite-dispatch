@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Infinite Dispatch</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>✈️ Infinite Dispatch</h1>
+      <div id="userInfo">Not logged in</div>
+    </header>
+    
+    <main>
+      <!-- Auth Section -->
+      <section id="authSection">
+        <h2>Login or Register</h2>
+        <p>Enter your IFC Username and create a password.</p>
+        <input type="text" id="username" placeholder="IFC Username">
+        <input type="password" id="password" placeholder="Password">
+        <button onclick="login()">Login / Register</button>
+      </section>
+
+      <!-- Dashboard Section -->
+      <section id="dashboardSection" style="display: none;">
+        <h2>Pilot Dashboard</h2>
+        <div class="stats">
+          <div class="stat-box">Rank: <br><span id="userRank" style="color:#00a8ff; font-size:24px;"></span></div>
+          <div class="stat-box">Balance: <br><span style="color:#00e676; font-size:24px;">$<span id="userBalance"></span></span></div>
+          <div class="stat-box">Hours: <br><span id="userHours" style="color:#ffca28; font-size:24px;"></span></div>
+        </div>
+
+        <h3>Flight Dispatch Center</h3>
+        <p>Import your latest SimBrief plan:</p>
+        <input type="text" id="sbUsername" placeholder="SimBrief Username">
+        <button onclick="fetchSimBrief()">Fetch Plan</button>
+        <pre id="sbResult">Awaiting Flight Plan...</pre>
+      </section>
+    </main>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
