@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Infinite Dispatch</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -16,27 +16,47 @@
     <main>
       <!-- Auth Section -->
       <section id="authSection">
-        <h2>Login or Register</h2>
-        <p>Enter your IFC Username and create a password.</p>
-        <input type="text" id="username" placeholder="IFC Username">
-        <input type="password" id="password" placeholder="Password">
-        <button onclick="login()">Login / Register</button>
+        <div class="card">
+          <h2>Login or Register</h2>
+          <p>Enter your IFC Username and password.</p>
+          <input type="text" id="username" placeholder="IFC Username">
+          <input type="password" id="password" placeholder="Password">
+          <button onclick="login()">Login / Register</button>
+          <p class="forgot-link"><a href="#" onclick="toggleReset()">Forgot Password?</a></p>
+        </div>
+      </section>
+
+      <!-- Password Reset Section -->
+      <section id="resetSection" style="display: none;">
+        <div class="card">
+          <h2>Reset Password</h2>
+          <p>Place the code <b>RESET-1234</b> in your IFC bio to verify identity.</p>
+          <input type="text" id="resetUsername" placeholder="IFC Username">
+          <input type="password" id="newPassword" placeholder="New Password">
+          <button onclick="resetPassword()" style="background-color: #ff9800;">Confirm Reset</button>
+          <button onclick="toggleReset()" style="background-color: #e74c3c; margin-top: 5px;">Cancel</button>
+        </div>
       </section>
 
       <!-- Dashboard Section -->
       <section id="dashboardSection" style="display: none;">
         <h2>Pilot Dashboard</h2>
         <div class="stats">
-          <div class="stat-box">Rank: <br><span id="userRank" style="color:#00a8ff; font-size:24px;"></span></div>
-          <div class="stat-box">Balance: <br><span style="color:#00e676; font-size:24px;">$<span id="userBalance"></span></span></div>
-          <div class="stat-box">Hours: <br><span id="userHours" style="color:#ffca28; font-size:24px;"></span></div>
+          <div class="stat-box">Rank: <br><span id="userRank" class="highlight-blue"></span></div>
+          <div class="stat-box">Balance: <br><span class="highlight-green">$<span id="userBalance"></span></span></div>
+          <div class="stat-box">Hours: <br><span id="userHours" class="highlight-yellow"></span></div>
         </div>
 
-        <h3>Flight Dispatch Center</h3>
-        <p>Import your latest SimBrief plan:</p>
-        <input type="text" id="sbUsername" placeholder="SimBrief Username">
-        <button onclick="fetchSimBrief()">Fetch Plan</button>
-        <pre id="sbResult">Awaiting Flight Plan...</pre>
+        <div class="card">
+          <h3>Flight Dispatch Center</h3>
+          <p>Import your latest SimBrief plan:</p>
+          <div class="input-group">
+            <input type="text" id="sbUsername" placeholder="SimBrief Username">
+            <button onclick="fetchSimBrief()">Fetch Plan</button>
+          </div>
+          <pre id="sbResult">Awaiting Flight Plan...</pre>
+          <button id="dispatchBtn" onclick="dispatchFlight()" style="display:none; width:100%; margin-top: 15px; background-color: #00e676; color: #000;">START FLIGHT & TRACKING</button>
+        </div>
       </section>
     </main>
   </div>

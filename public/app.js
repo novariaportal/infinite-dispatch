@@ -4,21 +4,18 @@ async function login() {
   
   if (!username || !password) return alert("Enter both username and password");
 
-  // Attempt login first
   let res = await fetch('/api/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ username, password })
   });
   
-  // If user doesn't exist yet, we "Verify" and create the account
   if (!res.ok) {
     res = await fetch('/api/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, code: '1234', password })
     });
-    // Log them in automatically after creation
     res = await fetch('/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -29,6 +26,7 @@ async function login() {
   const data = await res.json();
   if (data.success) {
     document.getElementById('authSection').style.display = 'none';
+    document.getElementById('resetSection').style.display = 'none';
     document.getElementById('dashboardSection').style.display = 'block';
     
     document.getElementById('userInfo').innerText = `Pilot: ${data.user.username}`;
@@ -40,8 +38,39 @@ async function login() {
   }
 }
 
+function toggleReset() {
+  const auth = document.getElementById('authSection');
+  const reset = document.getElementById('resetSection');
+  if (auth.style.display === 'none' || auth.style.display === '') {
+    auth.style.display = 'block';
+    reset.style.display = 'none';
+  } else {
+    auth.style.display = 'none';
+    reset.style.display = 'block';
+  }
+}
+
+async function resetPassword() {
+  const username = document.getElementById('resetUsername').value;
+  const newPassword = document.getElementById('newPassword').value;
+  
+  if (!username || !newPassword) return alert("Enter username and new password");
+  
+  const res = await fetch('/api/reset-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, newPassword, code: 'RESET-1234' })
+  });
+  
+  const data = await res.json();
+  alert(data.message);
+  if(data.success) toggleReset();
+}
+
 async function fetchSimBrief() {
   const sbUser = document.getElementById('sbUsername').value;
+  const btn = document.getElementById('dispatchBtn');
+  btn.style.display = 'none';
   document.getElementById('sbResult').innerText = "Fetching...";
   
   try {
@@ -54,10 +83,24 @@ async function fetchSimBrief() {
         `Route: ${data.origin.icao_code} ➔ ${data.destination.icao_code}\n` +
         `Aircraft Type: ${data.aircraft.icaocode}\n` +
         `Block Fuel: ${data.fuel.plan_ramp} lbs/kgs`;
+      btn.style.display = 'block'; // Show dispatch button
     } else {
-      document.getElementById('sbResult').innerText = 'No recent flight plan found for this username.';
+      document.getElementById('sbResult').innerText = 'No recent flight plan found.';
     }
   } catch (err) {
     document.getElementById('sbResult').innerText = 'Error fetching SimBrief data.';
   }
+}
+
+async function dispatchFlight() {
+  const username = document.getElementById('userInfo').innerText.replace('Pilot: ', '');
+  const res = await fetch('/api/dispatch', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, callsign: 'DISPATCH1' })
+  });
+  const data = await res.json();
+  alert(data.message);
+  document.getElementById('dispatchBtn').style.display = 'none';
+  document.getElementById('sbResult').innerText = "Status: EN ROUTE (Tracking Active...)";
 }
