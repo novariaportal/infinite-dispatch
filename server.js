@@ -11,6 +11,19 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Fetch the secret key from the server environment
 const IF_API_KEY = process.env.IF_API_KEY;
 
+// Cleaned list of airlines and their available CPL/MPL/ATPL fleets based on your JSON data
+const airlines = [
+  { name: "Delta Air Lines", fleet: ["CRJ-700", "CRJ-900", "Airbus A220-300", "Airbus A319", "Airbus A321", "Boeing 717-200", "Boeing 737-800", "Boeing 737-900", "Boeing 757-200", "Boeing 767-300", "Airbus A330-300", "Airbus A330-900", "Airbus A350"] },
+  { name: "British Airways", fleet: ["Airbus A318", "Airbus A319", "Airbus A320", "Airbus A321", "Boeing 777-200ER", "Boeing 777-300ER", "Boeing 787-8", "Boeing 787-9", "Boeing 787-10", "Airbus A380"] },
+  { name: "Singapore Airlines", fleet: ["Boeing 737-8 MAX", "Airbus A350", "Boeing 777-300ER", "Airbus A380", "Boeing 787-10"] },
+  { name: "Spirit Airlines", fleet: ["Airbus A319", "Airbus A320", "Airbus A321"] },
+  { name: "KLM", fleet: ["Boeing 737-700", "Boeing 737-800", "Boeing 737-900", "Boeing 777-200ER", "Boeing 777-300ER", "Boeing 787-9", "Boeing 787-10"] },
+  { name: "Emirates", fleet: ["Boeing 777-200LR", "Boeing 777-300ER", "Boeing 777F", "Airbus A380"] },
+  { name: "Qantas", fleet: ["Boeing 737-800", "Boeing 787-9", "Airbus A330-300", "Airbus A380", "Bombardier Dash 8-Q400", "Boeing 717-200"] },
+  { name: "JetBlue", fleet: ["Airbus A220-300", "Airbus A320", "Airbus A321", "E190"] },
+  { name: "United Airlines", fleet: ["Airbus A320", "Boeing 737-700", "Boeing 737-800", "Boeing 737-900", "Boeing 757-200", "Boeing 767-300", "Boeing 777-200ER", "Boeing 787-8", "Boeing 787-9", "Boeing 787-10"] }
+];
+
 // Mock Database (We will swap this for a real database later)
 const users = {};
 // Tracker memory for Autopilot Plus Session Stitching
@@ -20,6 +33,9 @@ const activeFlights = {};
 app.post('/api/verify', (req, res) => {
   const { username, code, password } = req.body;
   
+  // RNG: Pick a random airline for their career!
+  const randomAirline = airlines[Math.floor(Math.random() * airlines.length)];
+  
   // Scrape IFC forum profile here. Mocking success for now:
   users[username] = {
     username,
@@ -27,9 +43,11 @@ app.post('/api/verify', (req, res) => {
     rank: 'PPL',
     balance: 500, // Start with $500
     hours: 0,
-    typeRatings: ['C172', 'SR22', 'TBM9'] // PPL starting aircraft
+    employer: randomAirline.name,
+    allowedFleet: randomAirline.fleet,
+    typeRatings: ['Cessna 172', 'Cirrus SR22 GTS', 'TBM-930'] // PPL starting aircraft
   };
-  res.json({ success: true, message: 'Account verified and created!' });
+  res.json({ success: true, message: `Account created! You have been randomly hired by ${randomAirline.name}!` });
 });
 
 // 2. Login Route

@@ -16,6 +16,13 @@ async function login() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, code: '1234', password })
     });
+    
+    // Parse to show the hired message if newly created
+    const verifyData = await res.json();
+    if (verifyData.message && verifyData.message.includes('hired by')) {
+        alert(verifyData.message);
+    }
+    
     res = await fetch('/api/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -33,6 +40,7 @@ async function login() {
     document.getElementById('userRank').innerText = data.user.rank;
     document.getElementById('userBalance').innerText = data.user.balance;
     document.getElementById('userHours').innerText = data.user.hours;
+    document.getElementById('userEmployer').innerText = data.user.employer || "Unassigned";
   } else {
     alert(data.message);
   }
