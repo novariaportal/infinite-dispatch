@@ -33,6 +33,10 @@ const airlines = [
   { name: "United Airlines", fleet: ["Airbus A320", "Boeing 737-700", "Boeing 737-800", "Boeing 737-900", "Boeing 757-200", "Boeing 767-300", "Boeing 777-200ER", "Boeing 787-8", "Boeing 787-9", "Boeing 787-10"] }
 ];
 
+function randomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
 function getJobSlotCount(totalHours) {
   if (totalHours < 150) return 2;
   if (totalHours < 350) return 4;
@@ -40,7 +44,7 @@ function getJobSlotCount(totalHours) {
   if (totalHours < 650) return 7;
   if (totalHours < 900) return 8;
   // 900+ fluctuates but always above 8
-  return 10;
+  return randomInt(9, 18);
 }
 
 function getProgression(totalHours) {
