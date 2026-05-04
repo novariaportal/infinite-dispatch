@@ -1,6 +1,28 @@
+function getSystemUpdateKey() {
+  return 'infinite_dispatch_system_update_2026_05_seen';
+}
+
+function maybeShowSystemUpdate() {
+  const seen = localStorage.getItem(getSystemUpdateKey());
+  const el = document.getElementById('systemUpdate');
+  if (!el) return;
+  if (seen === '1') {
+    el.style.display = 'none';
+  } else {
+    el.style.display = 'block';
+  }
+}
+
+function dismissSystemUpdate() {
+  localStorage.setItem(getSystemUpdateKey(), '1');
+  const el = document.getElementById('systemUpdate');
+  if (el) el.style.display = 'none';
+}
+
 async function login() {
   const username = document.getElementById('username').value;
   const password = document.getElementById('password').value;
+  const baseAirport = document.getElementById('baseAirport')?.value;
   
   if (!username || !password) return alert("Enter both username and password");
 
@@ -11,17 +33,19 @@ async function login() {
   });
   
   if (!res.ok) {
+    // Register flow requires base airport
+    if (!baseAirport || baseAirport.trim().length < 4) {
+      return alert('Enter a Base Airport ICAO code (e.g., WSSS) to register.');
+    }
+
     res = await fetch('/api/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, code: '1234', password })
+      body: JSON.stringify({ username, code: '1234', password, baseAirport })
     });
     
-    // Parse to show the hired message if newly created
     const verifyData = await res.json();
-    if (verifyData.message && verifyData.message.includes('hired by')) {
-        alert(verifyData.message);
-    }
+    if (verifyData.message) alert(verifyData.message);
     
     res = await fetch('/api/login', {
       method: 'POST',
@@ -35,12 +59,16 @@ async function login() {
     document.getElementById('authSection').style.display = 'none';
     document.getElementById('resetSection').style.display = 'none';
     document.getElementById('dashboardSection').style.display = 'block';
-    
+
     document.getElementById('userInfo').innerText = `Pilot: ${data.user.username}`;
     document.getElementById('userRank').innerText = data.user.rank;
     document.getElementById('userBalance').innerText = data.user.balance;
     document.getElementById('userHours').innerText = data.user.hours;
     document.getElementById('userEmployer').innerText = data.user.employer || "Unassigned";
+    document.getElementById('userBase').innerText = data.user.baseAirport || '----';
+    document.getElementById('jobSlots').innerText = data.user.jobSlots ?? 0;
+
+    maybeShowSystemUpdate();
   } else {
     alert(data.message);
   }

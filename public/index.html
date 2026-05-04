@@ -18,9 +18,10 @@
       <section id="authSection">
         <div class="card">
           <h2>Login or Register</h2>
-          <p>Enter your IFC Username and password.</p>
+          <p>Enter your IFC Username, password, and choose your base airport (ICAO).</p>
           <input type="text" id="username" placeholder="IFC Username">
           <input type="password" id="password" placeholder="Password">
+          <input type="text" id="baseAirport" placeholder="Base Airport ICAO (e.g., WSSS)">
           <button onclick="login()">Login / Register</button>
           <p class="forgot-link"><a href="#" onclick="toggleReset()">Forgot Password?</a></p>
         </div>
@@ -41,14 +42,33 @@
       <!-- Dashboard Section -->
       <section id="dashboardSection" style="display: none;">
         <h2>Pilot Dashboard</h2>
+
+        <div id="systemUpdate" class="card system-update" style="display:none;">
+          <h3>System Update</h3>
+          <p>
+            Career Mode has been updated: you now pick a <b>Base Airport</b> at signup (locked),
+            the Job Market shows a <b>fixed number of jobs</b> based on your hours, and schedules
+            will return you to base within <b>3 legs</b>.
+          </p>
+          <button onclick="dismissSystemUpdate()">OK</button>
+        </div>
+
         <div class="card" style="text-align: center; margin-bottom: 20px;">
           <h3>Employer</h3>
           <h2 id="userEmployer" class="highlight-blue" style="margin-top: 5px;">None</h2>
+          <p style="margin: 6px 0 0; opacity: 0.8;">Base: <b id="userBase">----</b></p>
         </div>
+
         <div class="stats">
-          <div class="stat-box">Rank: <br><span id="userRank" class="highlight-blue"></span></div>
+          <div class="stat-box">License: <br><span id="userRank" class="highlight-blue"></span></div>
           <div class="stat-box">Balance: <br><span class="highlight-green">$<span id="userBalance"></span></span></div>
           <div class="stat-box">Hours: <br><span id="userHours" class="highlight-yellow"></span></div>
+        </div>
+
+        <div class="card">
+          <h3>Job Market</h3>
+          <p>Visible job slots: <b><span id="jobSlots">0</span></b></p>
+          <p style="opacity:0.75; font-size: 0.95rem;">(Job generation logic coming next.)</p>
         </div>
 
         <div class="card">
