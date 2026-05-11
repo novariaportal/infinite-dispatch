@@ -13,6 +13,9 @@ const LIVERY_CACHE_KEY = 'infinite_dispatch_livery_cache_v1';
 
 const LIVERY_API_KEY = 'tyy8znhl0u5kbbb2vuvdhfetmsil041u';
 const INVALID_LIVERY_PATTERN = /generic|special|factory/i;
+const JOB_WEIGHT_SCALE = 4;
+const BASE_PAY_PER_NM = 14;
+const BASE_TYPE_RATING_PRICE = 7000;
 
 let currentUser = null;
 let currentProfile = null;
@@ -135,7 +138,13 @@ const REGION_FALLBACKS = {
 };
 
 function randomInt(min, max) {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
+  const range = max - min + 1;
+  if (window.crypto?.getRandomValues) {
+    const array = new Uint32Array(1);
+    window.crypto.getRandomValues(array);
+    return min + (array[0] % range);
+  }
+  return min + (Date.now() % range);
 }
 
 function pickRandom(list) {
@@ -568,7 +577,7 @@ async function fetchAircraftOperators(aircraftId) {
 function weightedAircraftPick(models) {
   const weighted = [];
   models.forEach((aircraft) => {
-    const weight = Math.round((getPopularityMultiplier(aircraft.name) + getSizeMultiplier(getAircraftSizeClass(aircraft.name))) * 4);
+    const weight = Math.round((getPopularityMultiplier(aircraft.name) + getSizeMultiplier(getAircraftSizeClass(aircraft.name))) * JOB_WEIGHT_SCALE);
     for (let i = 0; i < weight; i += 1) weighted.push(aircraft);
   });
   return pickRandom(weighted) || pickRandom(models);
@@ -589,7 +598,7 @@ function calculateJobPay(distanceNm, aircraftName) {
   const typeRatingMult = getTypeRatingMultiplier(aircraftName);
   const pilotMult = Number(currentProfile?.pay_multiplier || 1);
 
-  const pay = distanceNm * 14 * sizeMult * popularityMult * typeRatingMult * pilotMult;
+  const pay = distanceNm * BASE_PAY_PER_NM * sizeMult * popularityMult * typeRatingMult * pilotMult;
   return Math.round(pay);
 }
 
@@ -639,7 +648,7 @@ function renderJobMarket() {
     item.innerHTML = `
       <div class="list-row"><strong>${job.airline}</strong><span>$${job.pay.toLocaleString()}</span></div>
       <div class="list-row muted"><span>${job.aircraft}</span><span>${job.distanceNm} nm</span></div>
-      <div class="list-row muted"><span>Passenger Service: Yes</span><span>Type Rating Bonus Applied</span></div>
+      <div class="list-row muted"><span>Passenger Service: Yes</span><span>${getTypeRatingMultiplier(job.aircraft) > 1 ? 'Type Rating Bonus Applied' : 'Standard Type Rating Pay'}</span></div>
       <button onclick="acceptJob('${job.id}')">Accept Job</button>
     `;
     list.appendChild(item);
@@ -651,15 +660,30 @@ async function loadJobMarket() {
 
   const slots = Number(currentProfile.job_slots || 0);
   availableJobs = [];
+  const seen = new Set();
+  let attempts = 0;
+  const maxAttempts = Math.max(20, slots * 40);
 
-  for (let i = 0; i < slots; i += 1) {
-    const job = await generatePassengerJob(i);
-    if (job) availableJobs.push(job);
+  while (availableJobs.length < slots && attempts < maxAttempts) {
+    const job = await generatePassengerJob(attempts);
+    attempts += 1;
+    if (!job) continue;
+
+    const signature = `${job.airline}|${job.aircraft}|${job.distanceNm}`;
+    if (seen.has(signature)) continue;
+    seen.add(signature);
+    availableJobs.push(job);
   }
 
   while (availableJobs.length < slots && availableJobs.length > 0) {
     const cloneSource = pickRandom(availableJobs);
-    availableJobs.push({ ...cloneSource, id: `${cloneSource.id}_c${availableJobs.length}` });
+    const adjustedDistance = cloneSource.distanceNm + (availableJobs.length * 17);
+    availableJobs.push({
+      ...cloneSource,
+      id: `${cloneSource.id}_c${availableJobs.length}`,
+      distanceNm: adjustedDistance,
+      pay: calculateJobPay(adjustedDistance, cloneSource.aircraft)
+    });
   }
 
   renderJobMarket();
@@ -803,7 +827,7 @@ function buildShopCatalog() {
     const sizeClass = getAircraftSizeClass(aircraft.name);
     const sizeMult = getSizeMultiplier(sizeClass);
     const popularity = getPopularityMultiplier(aircraft.name);
-    const price = Math.round(7000 * sizeMult * popularity);
+    const price = Math.round(BASE_TYPE_RATING_PRICE * sizeMult * popularity);
     return {
       ...aircraft,
       sizeClass,
@@ -840,7 +864,7 @@ async function buyTypeRating(aircraftId) {
   if (!aircraft) return;
 
   const sizeClass = getAircraftSizeClass(aircraft.name);
-  const price = Math.round(7000 * getSizeMultiplier(sizeClass) * getPopularityMultiplier(aircraft.name));
+  const price = Math.round(BASE_TYPE_RATING_PRICE * getSizeMultiplier(sizeClass) * getPopularityMultiplier(aircraft.name));
 
   const currentRatings = uniqueStrings(currentProfile.type_ratings || []);
   if (currentRatings.some((r) => r.toLowerCase() === aircraft.name.toLowerCase())) {
