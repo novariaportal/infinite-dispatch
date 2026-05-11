@@ -36,6 +36,8 @@ const POPULARITY_MULTIPLIER = {
   'Boeing 747-8': 1.14
 };
 
+const DEFAULT_EMPLOYERS = ['Singapore Airlines', 'Qantas', 'Emirates', 'KLM', 'British Airways', 'United Airlines'];
+
 const AIRPORTS = {
   WSSS: { name: 'Singapore', region: 'SEA', lat: 1.35, lon: 103.99 },
   WIII: { name: 'Jakarta', region: 'SEA', lat: -6.12, lon: 106.66 },
@@ -151,7 +153,7 @@ function getJobSlotCount(totalHours) {
   if (totalHours < 550) return 5;
   if (totalHours < 650) return 7;
   if (totalHours < 900) return 8;
-  return 9;
+  return randomInt(9, 18);
 }
 
 function getProgression(totalHours) {
@@ -274,7 +276,7 @@ async function createProfile(user, baseAirport) {
     id: user.id,
     username: user.email,
     base_airport: baseAirport.trim().toUpperCase(),
-    employer: 'Singapore Airlines',
+    employer: pickRandom(DEFAULT_EMPLOYERS) || 'Singapore Airlines',
     hours: totalHours,
     balance: 500,
     license: prog.license,
@@ -326,7 +328,6 @@ async function refreshDerivedProfile(profile) {
   const prog = getProgression(profile.hours || 0);
   const jobSlots = getJobSlotCount(profile.hours || 0);
   const updates = {};
-
   if (profile.license !== prog.license) updates.license = prog.license;
   if (profile.position !== prog.position) updates.position = prog.position;
   if (Number(profile.pay_multiplier) !== prog.multiplier) updates.pay_multiplier = prog.multiplier;
