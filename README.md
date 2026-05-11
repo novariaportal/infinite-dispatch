@@ -1,6 +1,6 @@
 # ✈️ Infinite Dispatch
 
-**Infinite Dispatch** is a Virtual Airline career tracker and economy system for **Infinite Flight**, now backed by **Supabase** (auth + database) and deployed as a **Vercel frontend**.
+**Infinite Dispatch** is a Virtual Airline career tracker and economy system for **Infinite Flight**, backed by **Supabase** (auth + database) and deployed as a **Vercel frontend**.
 
 ---
 
@@ -48,7 +48,31 @@ create table if not exists public.profiles (
   created_at timestamp with time zone default now()
 );
 
+create table if not exists public.flight_plans (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  flight_number text,
+  airline_icao text,
+  origin text,
+  destination text,
+  aircraft text,
+  plan_json jsonb,
+  created_at timestamp with time zone default now()
+);
+
+create table if not exists public.flight_tracking (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  callsign text,
+  origin text,
+  destination text,
+  status text default 'enroute',
+  created_at timestamp with time zone default now()
+);
+
 alter table public.profiles enable row level security;
+alter table public.flight_plans enable row level security;
+alter table public.flight_tracking enable row level security;
 
 create policy "Users can read own profile"
 on public.profiles for select
@@ -61,6 +85,22 @@ using (auth.uid() = id);
 create policy "Users can insert own profile"
 on public.profiles for insert
 with check (auth.uid() = id);
+
+create policy "Users can read own flight plans"
+on public.flight_plans for select
+using (auth.uid() = user_id);
+
+create policy "Users can insert own flight plans"
+on public.flight_plans for insert
+with check (auth.uid() = user_id);
+
+create policy "Users can read own tracking"
+on public.flight_tracking for select
+using (auth.uid() = user_id);
+
+create policy "Users can insert own tracking"
+on public.flight_tracking for insert
+with check (auth.uid() = user_id);
 ```
 
 3. In **Auth → Providers**, enable **Email**.
@@ -72,7 +112,7 @@ Update `public/config.js` with your values:
 
 ```js
 window.SUPABASE_URL = "YOUR_SUPABASE_URL";
-window.SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+window.SUPABASE_PUBLISHABLE_KEY = "YOUR_SUPABASE_PUBLISHABLE_KEY";
 ```
 
 ---
@@ -89,7 +129,13 @@ Then open: `http://localhost:3000`
 
 ## 🚀 Vercel Deployment
 
-This project is frontend-only on Vercel. Deploy the repo, and make sure your `public/config.js` is filled with your Supabase URL + anon key before deployment.
+This project is frontend-only on Vercel. Deploy the repo, and make sure your `public/config.js` is filled with your Supabase URL + publishable key before deployment.
+
+---
+
+## 📘 User Guide
+
+Open `public/user-guide.html` or use the in-app link to view the guide.
 
 ---
 

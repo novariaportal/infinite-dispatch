@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Infinite Dispatch - User Guide</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div>
+      <h1>✈️ Infinite Dispatch</h1>
+      <div>User Guide</div>
+    </div>
+    <nav class="header-nav">
+      <a href="index.html">Back to App</a>
+    </nav>
+  </header>
+
+  <main class="guide-container">
+    <h1>Infinite Dispatch User Guide</h1>
+    <p>Welcome to Infinite Dispatch. This guide explains the core gameplay loop, account setup, and how to use the dashboard.</p>
+
+    <div class="card">
+      <h2>1) Create Your Account</h2>
+      <ol>
+        <li>Enter your email + password.</li>
+        <li>Choose a <strong>Base Airport (ICAO)</strong> at signup.</li>
+        <li>Click <strong>Login / Register</strong>.</li>
+      </ol>
+      <p><strong>Important:</strong> Your base airport is locked after signup.</p>
+    </div>
+
+    <div class="card">
+      <h2>2) Base Airport Rules</h2>
+      <ul>
+        <li>You are always stationed at your selected base.</li>
+        <li>Routes will return to base within 3 legs.</li>
+        <li>Airline assignments are random but must operate from your base.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>3) Job Market Slots</h2>
+      <p>The job board shows a fixed number of slots based on total hours:</p>
+      <ul>
+        <li>0–150: 2</li>
+        <li>150–350: 4</li>
+        <li>350–550: 5</li>
+        <li>550–650: 7</li>
+        <li>650–900: 8</li>
+        <li>900+: 9–18</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>4) License & Rank Progression</h2>
+      <ul>
+        <li>PPL / FO → 1.0× pay</li>
+        <li>CPL / SFO → 1.5× pay</li>
+        <li>MPL / CPT → 2.0× pay</li>
+        <li>ATPL / SR CPT → 2.5× pay</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>5) SimBrief Integration</h2>
+      <ol>
+        <li>Enter your SimBrief username.</li>
+        <li>Click <strong>Fetch Plan</strong>.</li>
+        <li>The plan is saved automatically in Supabase.</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h2>6) Flight Tracking</h2>
+      <p>Click <strong>Start Flight & Tracking</strong> after fetching a plan.</p>
+      <p>The tracking session is saved in Supabase and marked as <strong>EN ROUTE</strong>.</p>
+      <p>Live position tracking will be enabled in the next backend update.</p>
+    </div>
+
+    <div class="card">
+      <h2>7) Password Reset</h2>
+      <p>Use the <strong>Forgot Password</strong> link on the login screen to request a reset email.</p>
+    </div>
+
+    <div class="card">
+      <h2>8) Data Storage</h2>
+      <p>All accounts, profiles, SimBrief plans, and tracking sessions are stored in Supabase.</p>
+    </div>
+  </main>
+</body>
+</html>

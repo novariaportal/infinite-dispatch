@@ -1,11 +1,14 @@
 const supabaseUrl = window.SUPABASE_URL;
-const supabaseAnonKey = window.SUPABASE_ANON_KEY;
+const supabasePublishableKey = window.SUPABASE_PUBLISHABLE_KEY;
 
-if (!supabaseUrl || !supabaseAnonKey || supabaseUrl.includes('YOUR_SUPABASE')) {
+if (!supabaseUrl || !supabasePublishableKey || supabaseUrl.includes('YOUR_SUPABASE')) {
   console.warn('Supabase config missing. Update public/config.js.');
 }
 
-const supabaseClient = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
+const supabaseClient = window.supabase.createClient(supabaseUrl, supabasePublishableKey);
+
+let currentUser = null;
+let latestSimbriefPlan = null;
 
 const airlines = [
   { name: "Delta Air Lines", fleet: ["CRJ-700", "CRJ-900", "Airbus A220-300", "Airbus A319", "Airbus A321", "Boeing 717-200", "Boeing 737-800", "Boeing 737-900", "Boeing 757-200", "Boeing 767-300", "Airbus A330-300", "Airbus A330-900", "Airbus A350"] },
@@ -167,6 +170,7 @@ async function login() {
   }
 
   if (data?.user) {
+    currentUser = data.user;
     try {
       const profile = await getProfile(data.user.id);
       const refreshed = await refreshDerivedProfile(profile);
@@ -198,6 +202,54 @@ async function resetPassword() {
   alert('Password reset email sent.');
 }
 
+async function saveSimBriefPlan(plan) {
+  if (!currentUser) return;
+
+  const payload = {
+    user_id: currentUser.id,
+    flight_number: plan?.general?.flight_number || null,
+    airline_icao: plan?.general?.icao_airline || null,
+    origin: plan?.origin?.icao_code || null,
+    destination: plan?.destination?.icao_code || null,
+    aircraft: plan?.aircraft?.icaocode || null,
+    plan_json: plan
+  };
+
+  const { error } = await supabaseClient.from('flight_plans').insert([payload]);
+  if (error) {
+    console.warn('Failed to save SimBrief plan:', error.message);
+  }
+}
+
+async function createTrackingSession() {
+  if (!currentUser) return null;
+
+  const callsign = latestSimbriefPlan?.general
+    ? `${latestSimbriefPlan.general.icao_airline}${latestSimbriefPlan.general.flight_number}`
+    : 'DISPATCH1';
+
+  const payload = {
+    user_id: currentUser.id,
+    callsign,
+    origin: latestSimbriefPlan?.origin?.icao_code || null,
+    destination: latestSimbriefPlan?.destination?.icao_code || null,
+    status: 'enroute'
+  };
+
+  const { data, error } = await supabaseClient
+    .from('flight_tracking')
+    .insert([payload])
+    .select('*')
+    .single();
+
+  if (error) {
+    console.warn('Failed to start tracking:', error.message);
+    return null;
+  }
+
+  return data;
+}
+
 async function fetchSimBrief() {
   const sbUser = document.getElementById('sbUsername').value;
   const btn = document.getElementById('dispatchBtn');
@@ -209,12 +261,14 @@ async function fetchSimBrief() {
     const data = await res.json();
     
     if (data.general) {
+      latestSimbriefPlan = data;
       document.getElementById('sbResult').innerText = 
         `Flight: ${data.general.icao_airline}${data.general.flight_number}\n` +
         `Route: ${data.origin.icao_code} ➔ ${data.destination.icao_code}\n` +
         `Aircraft Type: ${data.aircraft.icaocode}\n` +
         `Block Fuel: ${data.fuel.plan_ramp} lbs/kgs`;
       btn.style.display = 'block';
+      await saveSimBriefPlan(data);
     } else {
       document.getElementById('sbResult').innerText = 'No recent flight plan found.';
     }
@@ -224,7 +278,12 @@ async function fetchSimBrief() {
 }
 
 async function dispatchFlight() {
-  alert('Tracking system will be re-enabled in the next backend update.');
+  const tracking = await createTrackingSession();
+  if (!tracking) {
+    alert('Unable to start tracking. Check Supabase setup.');
+    return;
+  }
+  alert('Flight dispatched. Tracking session started.');
   document.getElementById('dispatchBtn').style.display = 'none';
-  document.getElementById('sbResult').innerText = "Status: EN ROUTE (Tracking Pending...)";
+  document.getElementById('sbResult').innerText = "Status: EN ROUTE (Tracking Active...)";
 }
