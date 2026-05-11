@@ -46,7 +46,7 @@ main { padding: 20px; max-width: 800px; margin: auto; }
   background: rgba(255, 202, 40, 0.07);
 }
 
-input, button {
+input, button, select {
   padding: 14px;
   margin: 8px 0;
   border-radius: 6px;
@@ -54,7 +54,7 @@ input, button {
   font-size: 16px;
   box-sizing: border-box;
 }
-input {
+input, select {
   background-color: #262a40;
   color: white;
   width: 100%;
@@ -99,6 +99,50 @@ pre {
 .input-group input { flex: 2; margin: 0; }
 .input-group button { flex: 1; margin: 0; }
 
+.muted {
+  color: #9aa4bf;
+}
+
+.history-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.history-list li {
+  border: 1px solid #262a40;
+  border-radius: 8px;
+  padding: 12px 14px;
+  background: #151826;
+}
+
+.history-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-weight: 600;
+}
+
+.history-callsign {
+  color: #00e676;
+}
+
+.history-route {
+  color: #e2e7ff;
+}
+
+.history-meta {
+  margin-top: 6px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  color: #9aa4bf;
+  font-size: 0.85rem;
+}
+
 .guide-container {
   max-width: 900px;
   margin: 0 auto;
@@ -118,5 +162,5 @@ pre {
   header { flex-direction: column; text-align: center; gap: 15px; }
   .stats { flex-direction: column; }
   .input-group { flex-direction: column; }
-  input, button { width: 100%; }
+  input, button, select { width: 100%; }
 }

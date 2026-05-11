@@ -122,6 +122,52 @@ async function refreshDerivedProfile(profile) {
   return data;
 }
 
+async function loadTrackingHistory() {
+  const list = document.getElementById('trackingHistory');
+  const empty = document.getElementById('trackingHistoryEmpty');
+  if (!list || !empty || !currentUser) return;
+
+  const { data, error } = await supabaseClient
+    .from('flight_tracking')
+    .select('callsign, origin, destination, status, server_type, created_at')
+    .eq('user_id', currentUser.id)
+    .order('created_at', { ascending: false })
+    .limit(5);
+
+  if (error) {
+    console.warn('Failed to load tracking history:', error.message);
+    return;
+  }
+
+  list.innerHTML = '';
+  if (!data || data.length === 0) {
+    empty.style.display = 'block';
+    return;
+  }
+
+  empty.style.display = 'none';
+  data.forEach((flight) => {
+    const item = document.createElement('li');
+    const route = [flight.origin, flight.destination].filter(Boolean).join(' ➔ ');
+    const server = (flight.server_type || 'casual').toUpperCase();
+    const status = (flight.status || 'enroute').toUpperCase();
+    const created = flight.created_at ? new Date(flight.created_at).toLocaleString() : '';
+
+    item.innerHTML = `
+      <div class="history-line">
+        <span class="history-callsign">${flight.callsign || 'DISPATCH'}</span>
+        <span class="history-route">${route || 'Route pending'}</span>
+      </div>
+      <div class="history-meta">
+        <span>${server}</span>
+        <span>${status}</span>
+        <span>${created}</span>
+      </div>
+    `;
+    list.appendChild(item);
+  });
+}
+
 function renderDashboard(profile) {
   document.getElementById('authSection').style.display = 'none';
   document.getElementById('resetSection').style.display = 'none';
@@ -136,6 +182,7 @@ function renderDashboard(profile) {
   document.getElementById('jobSlots').innerText = profile.job_slots ?? 0;
 
   maybeShowSystemUpdate();
+  loadTrackingHistory();
 }
 
 async function login() {
@@ -289,4 +336,5 @@ async function dispatchFlight() {
   alert('Flight dispatched. Tracking session started.');
   document.getElementById('dispatchBtn').style.display = 'none';
   document.getElementById('sbResult').innerText = "Status: EN ROUTE (Tracking Active...)";
+  loadTrackingHistory();
 }
