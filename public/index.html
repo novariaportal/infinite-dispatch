@@ -83,6 +83,12 @@
             <button onclick="fetchSimBrief()">Fetch Plan</button>
           </div>
           <pre id="sbResult">Awaiting Flight Plan...</pre>
+          <label for="serverType">Server</label>
+          <select id="serverType">
+            <option value="casual">Casual</option>
+            <option value="training">Training</option>
+            <option value="expert">Expert</option>
+          </select>
           <button id="dispatchBtn" onclick="dispatchFlight()" style="display:none; width:100%; margin-top: 15px; background-color: #00e676; color: #000;">START FLIGHT & TRACKING</button>
         </div>
       </section>

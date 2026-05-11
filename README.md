@@ -67,6 +67,7 @@ create table if not exists public.flight_tracking (
   origin text,
   destination text,
   status text default 'enroute',
+  server_type text default 'casual',
   last_lat double precision,
   last_lng double precision,
   last_alt double precision,
@@ -151,7 +152,7 @@ You can set up tracking using the Supabase Dashboard only.
 5. Click **Deploy**.
 
 ### 2) Add Secrets
-Go to **Project Settings → Secrets** and add:
+Go to **Project Settings → Secrets** or **Vault** and add:
 - `IF_API_KEY` = your Infinite Flight Live API key
 - `SUPABASE_URL` = your project URL (https://<ref>.supabase.co)
 - `SUPABASE_SERVICE_ROLE_KEY` = your Supabase service role key

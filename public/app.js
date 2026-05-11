@@ -228,12 +228,15 @@ async function createTrackingSession() {
     ? `${latestSimbriefPlan.general.icao_airline}${latestSimbriefPlan.general.flight_number}`
     : 'DISPATCH1';
 
+  const serverType = document.getElementById('serverType')?.value || 'casual';
+
   const payload = {
     user_id: currentUser.id,
     callsign,
     origin: latestSimbriefPlan?.origin?.icao_code || null,
     destination: latestSimbriefPlan?.destination?.icao_code || null,
-    status: 'enroute'
+    status: 'enroute',
+    server_type: serverType
   };
 
   const { data, error } = await supabaseClient
