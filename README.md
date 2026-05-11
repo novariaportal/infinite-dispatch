@@ -107,6 +107,13 @@ using (auth.uid() = user_id);
 create policy "Users can insert own tracking"
 on public.flight_tracking for insert
 with check (auth.uid() = user_id);
+
+-- IMPORTANT: grant table privileges to authenticated users
+grant usage on schema public to authenticated;
+
+grant select, insert, update, delete on table public.profiles to authenticated;
+grant select, insert, update, delete on table public.flight_plans to authenticated;
+grant select, insert, update, delete on table public.flight_tracking to authenticated;
 ```
 
 3. In **Auth → Providers**, enable **Email**.
