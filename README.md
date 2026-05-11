@@ -67,6 +67,11 @@ create table if not exists public.flight_tracking (
   origin text,
   destination text,
   status text default 'enroute',
+  last_lat double precision,
+  last_lng double precision,
+  last_alt double precision,
+  last_speed double precision,
+  updated_at timestamp with time zone default now(),
   created_at timestamp with time zone default now()
 );
 
@@ -130,6 +135,33 @@ Then open: `http://localhost:3000`
 ## 🚀 Vercel Deployment
 
 This project is frontend-only on Vercel. Deploy the repo, and make sure your `public/config.js` is filled with your Supabase URL + publishable key before deployment.
+
+---
+
+## ✈️ Infinite Flight Tracking (No Command Line)
+
+You can set up tracking using the Supabase Dashboard only.
+
+### 1) Create the Edge Function
+1. Open **Supabase Dashboard → Edge Functions**.
+2. Click **Create a new function**.
+3. Name it: `if-tracker`.
+4. Replace the code with the content from:
+   `supabase/functions/if-tracker/index.ts` in this repo.
+5. Click **Deploy**.
+
+### 2) Add Secrets
+Go to **Project Settings → Secrets** and add:
+- `IF_API_KEY` = your Infinite Flight Live API key
+- `SUPABASE_URL` = your project URL (https://<ref>.supabase.co)
+- `SUPABASE_SERVICE_ROLE_KEY` = your Supabase service role key
+
+### 3) Schedule the Function
+In **Edge Functions → if-tracker → Schedule**, set:
+```
+*/2 * * * *
+```
+(Every 2 minutes)
 
 ---
 
