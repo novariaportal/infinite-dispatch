@@ -99,6 +99,29 @@ async function getProfile(userId) {
   return data;
 }
 
+async function ensureProfile(user, baseAirportMaybe) {
+  try {
+    return await getProfile(user.id);
+  } catch (e) {
+    // If profile missing, create it.
+    const msg = (e && e.message) ? e.message : String(e);
+    const isMissing = msg.toLowerCase().includes('0 rows') || msg.toLowerCase().includes('row not found') || msg.toLowerCase().includes('json object requested') || msg.toLowerCase().includes('pgrst116');
+
+    if (!isMissing) throw e;
+
+    const baseAirport = (baseAirportMaybe || '').trim();
+    if (baseAirport.length < 4) {
+      const entered = prompt('Profile not found. Enter your Base Airport ICAO (e.g., WSSS):');
+      if (!entered || entered.trim().length < 4) {
+        throw new Error('Base Airport is required to create your profile.');
+      }
+      return await createProfile(user, entered);
+    }
+
+    return await createProfile(user, baseAirport);
+  }
+}
+
 async function refreshDerivedProfile(profile) {
   const prog = getProgression(profile.hours || 0);
   const jobSlots = getJobSlotCount(profile.hours || 0);
@@ -185,46 +208,88 @@ function renderDashboard(profile) {
   loadTrackingHistory();
 }
 
+function getAuthButton() {
+  return document.querySelector('button[onclick="login()"]');
+}
+
+function setAuthButtonLoading(isLoading) {
+  const btn = getAuthButton();
+  if (!btn) return;
+  btn.disabled = isLoading;
+  btn.innerText = isLoading ? 'Processing...' : 'Login / Register';
+}
+
 async function login() {
-  const email = document.getElementById('email').value;
+  const email = document.getElementById('email').value?.trim();
   const password = document.getElementById('password').value;
   const baseAirport = document.getElementById('baseAirport')?.value;
 
   if (!email || !password) return alert("Enter email and password");
 
-  let { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+  try {
+    setAuthButtonLoading(true);
 
-  if (error) {
-    if (!baseAirport || baseAirport.trim().length < 4) {
-      return alert('Enter a Base Airport ICAO code (e.g., WSSS) to register.');
-    }
+    // 1) Attempt sign-in
+    let { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
 
-    const signUpResult = await supabaseClient.auth.signUp({ email, password });
-    if (signUpResult.error) return alert(signUpResult.error.message);
+    // 2) If sign-in fails, only attempt sign-up for *specific* cases.
+    if (error) {
+      const msg = (error.message || '').toLowerCase();
 
-    const user = signUpResult.data.user;
-    if (!user) return alert('Check your email to confirm your account.');
+      // If user exists but password wrong, do NOT sign up again.
+      if (msg.includes('invalid login credentials') || msg.includes('invalid credentials')) {
+        alert('Invalid email or password. If you already registered, use the same password.');
+        return;
+      }
 
-    try {
+      // Rate limits
+      if (msg.includes('rate limit') || msg.includes('too many')) {
+        alert(error.message);
+        return;
+      }
+
+      // Otherwise, attempt sign-up (new user path)
+      if (!baseAirport || baseAirport.trim().length < 4) {
+        return alert('Enter a Base Airport ICAO code (e.g., WSSS) to register.');
+      }
+
+      const signUpResult = await supabaseClient.auth.signUp({ email, password });
+      if (signUpResult.error) {
+        alert(signUpResult.error.message);
+        return;
+      }
+
+      const user = signUpResult.data.user;
+      if (!user) {
+        alert('Registration created. Please check your email to confirm your account, then log in.');
+        return;
+      }
+
+      // Create profile
       await createProfile(user, baseAirport);
-    } catch (createError) {
-      return alert(createError.message);
+
+      // Try sign-in again
+      const loginResult = await supabaseClient.auth.signInWithPassword({ email, password });
+      if (loginResult.error) {
+        alert(loginResult.error.message);
+        return;
+      }
+
+      data = loginResult.data;
     }
 
-    const loginResult = await supabaseClient.auth.signInWithPassword({ email, password });
-    if (loginResult.error) return alert(loginResult.error.message);
-    data = loginResult.data;
-  }
-
-  if (data?.user) {
-    currentUser = data.user;
-    try {
-      const profile = await getProfile(data.user.id);
+    // 3) Signed in: ensure profile exists (fixes "signup worked but profile insert failed")
+    if (data?.user) {
+      currentUser = data.user;
+      const profile = await ensureProfile(data.user, baseAirport);
       const refreshed = await refreshDerivedProfile(profile);
       renderDashboard(refreshed);
-    } catch (profileError) {
-      alert(profileError.message);
     }
+  } catch (err) {
+    console.error('Login error:', err);
+    alert(err?.message || String(err));
+  } finally {
+    setAuthButtonLoading(false);
   }
 }
 
