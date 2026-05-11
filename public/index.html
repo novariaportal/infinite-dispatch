@@ -8,22 +8,21 @@
 </head>
 <body>
   <div id="app">
-    <header>
+    <header class="topbar">
       <div>
-        <h1>✈️ Infinite Dispatch</h1>
+        <h1>Infinite Dispatch</h1>
         <div id="userInfo">Not logged in</div>
       </div>
       <nav class="header-nav">
         <a href="user-guide.html">User Guide</a>
       </nav>
     </header>
-    
+
     <main>
-      <!-- Auth Section -->
       <section id="authSection">
-        <div class="card">
+        <div class="card auth-card">
           <h2>Login or Register</h2>
-          <p>Use email/password and choose your base airport (ICAO) for your first registration.</p>
+          <p>Use email/password and choose your base airport (ICAO) for first-time registration.</p>
           <input type="email" id="email" placeholder="Email">
           <input type="password" id="password" placeholder="Password">
           <input type="text" id="baseAirport" placeholder="Base Airport ICAO (e.g., WSSS)">
@@ -32,86 +31,143 @@
         </div>
       </section>
 
-      <!-- Password Reset Request Section -->
       <section id="resetSection" style="display: none;">
-        <div class="card">
+        <div class="card auth-card">
           <h2>Reset Password</h2>
           <p>Enter your email and we’ll send a password reset link.</p>
           <input type="email" id="resetEmail" placeholder="Email">
-          <button onclick="resetPassword()" style="background-color: #ff9800;">Send Reset Link</button>
-          <button onclick="toggleReset()" style="background-color: #e74c3c; margin-top: 5px;">Cancel</button>
+          <button onclick="resetPassword()" class="warning">Send Reset Link</button>
+          <button onclick="toggleReset()" class="danger">Cancel</button>
         </div>
       </section>
 
-      <!-- Password Recovery (Set New Password) Section -->
       <section id="recoverySection" style="display: none;">
-        <div class="card">
+        <div class="card auth-card">
           <h2>Set New Password</h2>
           <p>Enter your new password to complete the reset.</p>
           <input type="password" id="newPassword" placeholder="New password">
           <input type="password" id="confirmNewPassword" placeholder="Confirm new password">
-          <button onclick="completePasswordRecovery()" style="background-color: #00e676; color: #000;">Update Password</button>
-          <p class="muted" style="margin-top: 10px;">If this page was opened from a reset email, you should be able to set a new password here.</p>
+          <button onclick="completePasswordRecovery()" class="success">Update Password</button>
+          <p class="muted">If this page was opened from a reset email, you can set your new password here.</p>
         </div>
       </section>
 
-      <!-- Dashboard Section -->
       <section id="dashboardSection" style="display: none;">
-        <h2>Pilot Dashboard</h2>
+        <div class="app-shell">
+          <aside class="sidebar card">
+            <div class="sidebar-head">
+              <h3>Pilot Console</h3>
+              <p id="sidebarEmployer" class="muted">Employer: Unassigned</p>
+              <p id="sidebarBase" class="muted">Base: ----</p>
+            </div>
 
-        <div id="systemUpdate" class="card system-update" style="display:none;">
-          <h3>System Update</h3>
-          <p>
-            Career Mode has been updated: you now pick a <b>Base Airport</b> at signup (locked),
-            the Job Market shows a <b>fixed number of jobs</b> based on your hours, and schedules
-            will return you to base within <b>3 legs</b>.
-          </p>
-          <button onclick="dismissSystemUpdate()">OK</button>
-        </div>
+            <nav class="sidebar-nav">
+              <button class="nav-btn active" data-page="overviewPage" onclick="showPage('overviewPage')">Overview</button>
+              <button class="nav-btn" data-page="jobsPage" onclick="showPage('jobsPage')">Job Market</button>
+              <button class="nav-btn" data-page="dispatchPage" onclick="showPage('dispatchPage')">Dispatch</button>
+              <button class="nav-btn" data-page="shopPage" onclick="showPage('shopPage')">Pilot Shop</button>
+              <button class="nav-btn" data-page="historyPage" onclick="showPage('historyPage')">Tracking</button>
+            </nav>
 
-        <div class="card" style="text-align: center; margin-bottom: 20px;">
-          <h3>Employer</h3>
-          <h2 id="userEmployer" class="highlight-blue" style="margin-top: 5px;">None</h2>
-          <p style="margin: 6px 0 0; opacity: 0.8;">Base: <b id="userBase">----</b></p>
-        </div>
+            <div class="sidebar-settings">
+              <label for="themeSelect">Theme</label>
+              <select id="themeSelect" onchange="onThemeChange()">
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
 
-        <div class="stats">
-          <div class="stat-box">License: <br><span id="userRank" class="highlight-blue"></span></div>
-          <div class="stat-box">Balance: <br><span class="highlight-green">$<span id="userBalance"></span></span></div>
-          <div class="stat-box">Hours: <br><span id="userHours" class="highlight-yellow"></span></div>
-        </div>
+              <label class="checkbox-row" for="glassToggle">
+                <input type="checkbox" id="glassToggle" onchange="onGlassToggle()">
+                Enable liquid glass mode
+              </label>
 
-        <div class="card">
-          <h3>Job Market</h3>
-          <p>Visible job slots: <b><span id="jobSlots">0</span></b></p>
-          <p style="opacity:0.75; font-size: 0.95rem;">(Job generation logic coming next.)</p>
-        </div>
+              <button onclick="logout()" class="danger">Log Out</button>
+            </div>
+          </aside>
 
-        <div class="card">
-          <h3>Flight Dispatch Center</h3>
-          <p>Import your latest SimBrief plan:</p>
-          <div class="input-group">
-            <input type="text" id="sbUsername" placeholder="SimBrief Username">
-            <button onclick="fetchSimBrief()">Fetch Plan</button>
+          <div class="content">
+            <section id="overviewPage" class="page active">
+              <h2>Dashboard</h2>
+              <div class="stats">
+                <div class="stat-box">
+                  <div class="label">License</div>
+                  <div id="userRank" class="stat-value"></div>
+                </div>
+                <div class="stat-box">
+                  <div class="label">Balance</div>
+                  <div class="stat-value">$<span id="userBalance"></span></div>
+                </div>
+                <div class="stat-box">
+                  <div class="label">Hours</div>
+                  <div id="userHours" class="stat-value"></div>
+                </div>
+                <div class="stat-box">
+                  <div class="label">Job Slots</div>
+                  <div id="jobSlots" class="stat-value"></div>
+                </div>
+              </div>
+              <div class="card">
+                <h3>Current Employer</h3>
+                <p><strong id="userEmployer">Unassigned</strong></p>
+                <p class="muted">Base Airport: <strong id="userBase">----</strong></p>
+              </div>
+            </section>
+
+            <section id="jobsPage" class="page">
+              <h2>Job Market</h2>
+              <p class="muted">Passenger jobs shown: <strong id="jobsCount">0</strong></p>
+              <div class="input-group">
+                <button onclick="loadJobMarket()">Refresh Jobs</button>
+              </div>
+              <div id="jobsList" class="list"></div>
+            </section>
+
+            <section id="dispatchPage" class="page">
+              <h2>Dispatch Center</h2>
+              <div class="card">
+                <h3>Accepted Job</h3>
+                <div id="acceptedJobDetails" class="muted">No job accepted yet.</div>
+                <button id="generateDispatchBtn" onclick="generateDispatch()" disabled>Generate Flight / Dispatch</button>
+              </div>
+              <div class="card">
+                <h3>Generated Route</h3>
+                <pre id="dispatchResult">No dispatch generated yet.</pre>
+                <button id="startTrackingBtn" onclick="dispatchFlight()" style="display:none;">Start Flight Tracking</button>
+              </div>
+              <div class="card">
+                <h3>SimBrief (Optional)</h3>
+                <p class="muted">You can still import your latest SimBrief plan.</p>
+                <div class="input-group">
+                  <input type="text" id="sbUsername" placeholder="SimBrief Username">
+                  <button onclick="fetchSimBrief()">Fetch Plan</button>
+                </div>
+                <pre id="sbResult">Awaiting Flight Plan...</pre>
+                <label for="serverType">Server</label>
+                <select id="serverType">
+                  <option value="casual">Casual</option>
+                  <option value="training">Training</option>
+                  <option value="expert">Expert</option>
+                </select>
+              </div>
+            </section>
+
+            <section id="shopPage" class="page">
+              <h2>Pilot Shop</h2>
+              <p class="muted">Purchase aircraft type ratings with no progression lock.</p>
+              <div id="shopList" class="list"></div>
+            </section>
+
+            <section id="historyPage" class="page">
+              <h2>Tracking History</h2>
+              <p id="trackingHistoryEmpty" class="muted">No Infinite Dispatch flights tracked yet.</p>
+              <ul id="trackingHistory" class="history-list"></ul>
+            </section>
           </div>
-          <pre id="sbResult">Awaiting Flight Plan...</pre>
-          <label for="serverType">Server</label>
-          <select id="serverType">
-            <option value="casual">Casual</option>
-            <option value="training">Training</option>
-            <option value="expert">Expert</option>
-          </select>
-          <button id="dispatchBtn" onclick="dispatchFlight()" style="display:none; width:100%; margin-top: 15px; background-color: #00e676; color: #000;">START FLIGHT & TRACKING</button>
-        </div>
-
-        <div class="card">
-          <h3>Tracking History</h3>
-          <p id="trackingHistoryEmpty" class="muted">No Infinite Dispatch flights tracked yet.</p>
-          <ul id="trackingHistory" class="history-list"></ul>
         </div>
       </section>
     </main>
   </div>
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
   <script src="app.js"></script>
