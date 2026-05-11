@@ -1,74 +1,96 @@
 # ✈️ Infinite Dispatch
 
-**Infinite Dispatch** is an automated, real-time Virtual Airline career tracker and economy system built for **Infinite Flight**.
-
-Unlike traditional VAs, Infinite Dispatch features a randomized job market, a full licensing progression system, and a custom flight tracker designed specifically to handle Infinite Flight's "Autopilot Plus" feature without dropping flights.
+**Infinite Dispatch** is a Virtual Airline career tracker and economy system for **Infinite Flight**, now backed by **Supabase** (auth + database) and deployed as a **Vercel frontend**.
 
 ---
 
 ## 🌟 Key Features
 
-### 1. The License Economy
-Pilots start at the bottom and work their way up through a realistic license progression:
-*   **PPL (Private Pilot License):** Start with small GA aircraft (C172, SR22, TBM9) and a $500 bank balance.
-*   **CPL (Commercial Pilot License):** Unlock regional jets and access the RNG Job Market.
-*   **MPL (Multi-Crew Pilot License):** Unlock mid-size airliners.
-*   **ATPL (Airline Transport Pilot License):** Unlock heavy long-haul aircraft.
+### 1. License & Rank Progression
+Pilots advance through a standardized progression:
+- **PPL / FO** → 1.0×
+- **CPL / SFO** → 1.5×
+- **MPL / CPT** → 2.0×
+- **ATPL / SR CPT** → 2.5×
 
-### 2. The RNG Job Market
-Instead of flying whatever you want, whenever you want, pilots must check the **Job Market**. The system randomly generates contracts based on real-world Infinite Flight fleet pairings (e.g., "Singapore Airlines requires a 777 captain from WSSS to YSSY"). 
+### 2. Fixed Job Market
+Job slots are fixed by total hours:
+- 0–150: **2**
+- 150–350: **4**
+- 350–550: **5**
+- 550–650: **7**
+- 650–900: **8**
+- 900+: **9–18** (fluctuates)
 
-### 3. "Session Stitching" Flight Tracker (Autopilot+ Compatible)
-Traditional trackers fail when a user engages "Autopilot Plus" because the aircraft disappears from the Live API. Infinite Dispatch uses **Checkpoint Tracking**:
-1.  **Departure:** The server logs your takeoff and aircraft.
-2.  **The Pause:** You engage Autopilot+, disappearing from the Live API. The server places your flight on "Approach Hold".
-3.  **The Arrival:** You resume 30 minutes from the destination, reappearing on the API. The server reconnects your session and awards **full XP and pay** for the entire elapsed time when you land.
-
-### 4. SimBrief Integration
-Fully integrated with the public SimBrief API. Pilots simply type their username, and the dashboard instantly fetches their latest generated flight plan, route, aircraft, and block fuel.
-
-### 5. IFC Bio Verification
-No manual admin approvals required. Users create an account by placing a randomly generated 6-digit code (e.g., `DISPATCH-8492`) into their Infinite Flight Community (IFC) forum bio. The server automatically verifies their identity and logs them in.
+### 3. Base Airport Lock
+Your base airport is chosen at signup and **cannot be changed**.
 
 ---
 
-## 🛠️ Local Setup & Installation
+## ✅ Supabase Setup
 
-If you want to run Infinite Dispatch on your own machine for testing:
+1. Create a Supabase project.
+2. Run this SQL in **SQL Editor**:
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/novariaportal/infinite-dispatch.git
-   cd infinite-dispatch
-   ```
+```sql
+create table if not exists public.profiles (
+  id uuid primary key,
+  username text unique not null,
+  base_airport text not null,
+  employer text not null,
+  hours integer not null default 0,
+  balance integer not null default 500,
+  license text not null default 'PPL',
+  position text not null default 'FO',
+  pay_multiplier numeric not null default 1.0,
+  job_slots integer not null default 2,
+  type_ratings text[] not null default '{}',
+  created_at timestamp with time zone default now()
+);
 
-2. **Install dependencies:**
-   ```bash
-   npm install
-   ```
+alter table public.profiles enable row level security;
 
-3. **Set your API Key:**
-   You must have an Infinite Flight Live API key. Set it as an environment variable:
-   *   *Windows:* `set IF_API_KEY=your_key_here`
-   *   *Mac/Linux:* `export IF_API_KEY=your_key_here`
+create policy "Users can read own profile"
+on public.profiles for select
+using (auth.uid() = id);
 
-4. **Start the server:**
-   ```bash
-   npm start
-   ```
-5. Open your browser and go to `http://localhost:3000`
+create policy "Users can update own profile"
+on public.profiles for update
+using (auth.uid() = id);
+
+create policy "Users can insert own profile"
+on public.profiles for insert
+with check (auth.uid() = id);
+```
+
+3. In **Auth → Providers**, enable **Email**.
 
 ---
 
-## 🚀 Deployment (Heroku / DigitalOcean)
+## 🔐 Configure Supabase Keys
+Update `public/config.js` with your values:
 
-To keep the server awake 24/7 to track long-haul flights, deploy this app using a service like Heroku or DigitalOcean App Platform.
-
-**CRITICAL SECURITY NOTE:** 
-**Never** paste your `IF_API_KEY` directly into the code. When deploying:
-1. Go to your host's Dashboard (e.g., Heroku Settings -> Config Vars).
-2. Add a new Environment Variable.
-3. Key: `IF_API_KEY` | Value: `(Your Actual Key)`
+```js
+window.SUPABASE_URL = "YOUR_SUPABASE_URL";
+window.SUPABASE_ANON_KEY = "YOUR_SUPABASE_ANON_KEY";
+```
 
 ---
+
+## 🛠️ Local Setup
+
+```bash
+npm install
+npm start
+```
+Then open: `http://localhost:3000`
+
+---
+
+## 🚀 Vercel Deployment
+
+This project is frontend-only on Vercel. Deploy the repo, and make sure your `public/config.js` is filled with your Supabase URL + anon key before deployment.
+
+---
+
 *Built by @novariaportal*

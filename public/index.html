@@ -18,8 +18,8 @@
       <section id="authSection">
         <div class="card">
           <h2>Login or Register</h2>
-          <p>Enter your IFC Username, password, and choose your base airport (ICAO).</p>
-          <input type="text" id="username" placeholder="IFC Username">
+          <p>Use email/password and choose your base airport (ICAO) for your first registration.</p>
+          <input type="email" id="email" placeholder="Email">
           <input type="password" id="password" placeholder="Password">
           <input type="text" id="baseAirport" placeholder="Base Airport ICAO (e.g., WSSS)">
           <button onclick="login()">Login / Register</button>
@@ -31,10 +31,9 @@
       <section id="resetSection" style="display: none;">
         <div class="card">
           <h2>Reset Password</h2>
-          <p>Place the code <b>RESET-1234</b> in your IFC bio to verify identity.</p>
-          <input type="text" id="resetUsername" placeholder="IFC Username">
-          <input type="password" id="newPassword" placeholder="New Password">
-          <button onclick="resetPassword()" style="background-color: #ff9800;">Confirm Reset</button>
+          <p>Enter your email and we’ll send a password reset link.</p>
+          <input type="email" id="resetEmail" placeholder="Email">
+          <button onclick="resetPassword()" style="background-color: #ff9800;">Send Reset Link</button>
           <button onclick="toggleReset()" style="background-color: #e74c3c; margin-top: 5px;">Cancel</button>
         </div>
       </section>
@@ -84,6 +83,8 @@
       </section>
     </main>
   </div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
