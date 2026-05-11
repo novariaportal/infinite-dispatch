@@ -63,6 +63,90 @@ function dismissSystemUpdate() {
   if (el) el.style.display = 'none';
 }
 
+function showSection(sectionId) {
+  const ids = ['authSection', 'resetSection', 'recoverySection', 'dashboardSection'];
+  ids.forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.style.display = (id === sectionId) ? 'block' : 'none';
+  });
+}
+
+function getHashParams() {
+  const hash = window.location.hash || '';
+  const cleaned = hash.startsWith('#') ? hash.slice(1) : hash;
+  const params = new URLSearchParams(cleaned);
+  const obj = {};
+  for (const [k, v] of params.entries()) obj[k] = v;
+  return obj;
+}
+
+async function handleRecoveryRedirectIfPresent() {
+  const params = getHashParams();
+  const type = params.type;
+
+  if (type !== 'recovery') return false;
+
+  // When arriving from a recovery email, supabase-js typically auto-detects
+  // the tokens in the URL hash and establishes a session.
+  // We simply show the "Set New Password" section.
+  showSection('recoverySection');
+
+  // Best-effort: update header text if a session exists.
+  try {
+    const { data } = await supabaseClient.auth.getUser();
+    if (data?.user?.email) {
+      document.getElementById('userInfo').innerText = `Password reset for: ${data.user.email}`;
+    } else {
+      document.getElementById('userInfo').innerText = 'Password reset';
+    }
+  } catch {
+    document.getElementById('userInfo').innerText = 'Password reset';
+  }
+
+  return true;
+}
+
+async function completePasswordRecovery() {
+  const newPassword = document.getElementById('newPassword')?.value || '';
+  const confirm = document.getElementById('confirmNewPassword')?.value || '';
+
+  if (!newPassword || newPassword.length < 8) {
+    alert('Password must be at least 8 characters.');
+    return;
+  }
+  if (newPassword !== confirm) {
+    alert('Passwords do not match.');
+    return;
+  }
+
+  try {
+    // Ensure there is a session. If the user opened the recovery link, supabase-js
+    // should have already parsed the hash and stored a session.
+    const sessionRes = await supabaseClient.auth.getSession();
+    if (!sessionRes?.data?.session) {
+      alert('Reset session not found. Please open the password reset link again and try immediately.');
+      return;
+    }
+
+    const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
+    if (error) {
+      alert(error.message);
+      return;
+    }
+
+    alert('Password updated. Please log in with your new password.');
+
+    // Clean up: sign out and remove token hash from URL.
+    await supabaseClient.auth.signOut();
+    history.replaceState(null, '', window.location.pathname);
+    showSection('authSection');
+  } catch (err) {
+    console.error('completePasswordRecovery error:', err);
+    alert(err?.message || String(err));
+  }
+}
+
 async function createProfile(user, baseAirport) {
   const randomAirline = airlines[Math.floor(Math.random() * airlines.length)];
   const totalHours = 0;
@@ -192,9 +276,7 @@ async function loadTrackingHistory() {
 }
 
 function renderDashboard(profile) {
-  document.getElementById('authSection').style.display = 'none';
-  document.getElementById('resetSection').style.display = 'none';
-  document.getElementById('dashboardSection').style.display = 'block';
+  showSection('dashboardSection');
 
   document.getElementById('userInfo').innerText = `Pilot: ${profile.username}`;
   document.getElementById('userRank').innerText = profile.license;
@@ -296,12 +378,22 @@ async function login() {
 function toggleReset() {
   const auth = document.getElementById('authSection');
   const reset = document.getElementById('resetSection');
+  const recovery = document.getElementById('recoverySection');
+
+  // If in recovery, always go back to auth.
+  if (recovery && recovery.style.display !== 'none') {
+    showSection('authSection');
+    return;
+  }
+
   if (auth.style.display === 'none' || auth.style.display === '') {
     auth.style.display = 'block';
     reset.style.display = 'none';
+    if (recovery) recovery.style.display = 'none';
   } else {
     auth.style.display = 'none';
     reset.style.display = 'block';
+    if (recovery) recovery.style.display = 'none';
   }
 }
 
@@ -309,9 +401,11 @@ async function resetPassword() {
   const email = document.getElementById('resetEmail').value;
   if (!email) return alert('Enter your email');
 
-  const { error } = await supabaseClient.auth.resetPasswordForEmail(email);
+  // Instruct Supabase to redirect back to the app.
+  const redirectTo = window.location.origin;
+  const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo });
   if (error) return alert(error.message);
-  alert('Password reset email sent.');
+  alert('Password reset email sent. Open the email link to set a new password.');
 }
 
 async function saveSimBriefPlan(plan) {
@@ -403,3 +497,13 @@ async function dispatchFlight() {
   document.getElementById('sbResult').innerText = "Status: EN ROUTE (Tracking Active...)";
   loadTrackingHistory();
 }
+
+// On load: handle password recovery redirect if present.
+window.addEventListener('load', async () => {
+  try {
+    const handled = await handleRecoveryRedirectIfPresent();
+    if (handled) return;
+  } catch (e) {
+    console.warn('Failed to handle recovery redirect:', e);
+  }
+});

@@ -32,7 +32,7 @@
         </div>
       </section>
 
-      <!-- Password Reset Section -->
+      <!-- Password Reset Request Section -->
       <section id="resetSection" style="display: none;">
         <div class="card">
           <h2>Reset Password</h2>
@@ -40,6 +40,18 @@
           <input type="email" id="resetEmail" placeholder="Email">
           <button onclick="resetPassword()" style="background-color: #ff9800;">Send Reset Link</button>
           <button onclick="toggleReset()" style="background-color: #e74c3c; margin-top: 5px;">Cancel</button>
+        </div>
+      </section>
+
+      <!-- Password Recovery (Set New Password) Section -->
+      <section id="recoverySection" style="display: none;">
+        <div class="card">
+          <h2>Set New Password</h2>
+          <p>Enter your new password to complete the reset.</p>
+          <input type="password" id="newPassword" placeholder="New password">
+          <input type="password" id="confirmNewPassword" placeholder="Confirm new password">
+          <button onclick="completePasswordRecovery()" style="background-color: #00e676; color: #000;">Update Password</button>
+          <p class="muted" style="margin-top: 10px;">If this page was opened from a reset email, you should be able to set a new password here.</p>
         </div>
       </section>
 
