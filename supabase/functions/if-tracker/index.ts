@@ -9,6 +9,7 @@ const SERVER_WORLD_TYPES = {
 
 const BASE_PAY_PER_NM = 14;
 const NM_PER_HOUR_BASELINE = 420;
+const NM_PER_KM = 0.539957;
 const MIN_VALID_COMPLETION_DISTANCE_NM = 25;
 const MAX_VALID_COMPLETION_ALT_FT = 5000;
 const MAX_VALID_COMPLETION_GS_KTS = 260;
@@ -70,7 +71,7 @@ function haversineNm(
 
   const c = 2 * Math.atan2(Math.sqrt(inner), Math.sqrt(1 - inner));
   const km = 6371 * c;
-  return km * 0.539957;
+  return km * NM_PER_KM;
 }
 
 serve(async () => {

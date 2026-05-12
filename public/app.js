@@ -18,6 +18,9 @@ const JOB_WEIGHT_SCALE = 4;
 const BASE_PAY_PER_NM = 14;
 const BASE_TYPE_RATING_PRICE = 7000;
 const MAX_CALLSIGN_LENGTH = 12;
+const NM_PER_KM = 0.539957;
+const MIN_VALID_TRACKING_SPEED_KTS = 40;
+const NEW_PILOT_HOURS_THRESHOLD = 5;
 const LICENSE_LEVELS = ['PPL', 'CPL', 'MPL', 'ATPL'];
 const LICENSE_META = {
   PPL: { position: 'FO', multiplier: 1.0 },
@@ -43,6 +46,7 @@ let availableJobs = [];
 let acceptedJob = null;
 let passengerAircraftCatalog = [];
 let liveryCache = {};
+let hasTrackingHistory = false;
 
 const POPULARITY_MULTIPLIER = {
   'Airbus A320': 1.06,
@@ -905,6 +909,7 @@ function acceptJob(jobId) {
   document.getElementById('generateDispatchBtn').disabled = false;
   document.getElementById('dispatchResult').innerText = 'Accepted. Generate Flight / Dispatch when ready.';
   document.getElementById('startTrackingBtn').style.display = 'none';
+  if (currentProfile) renderOnboardingCard(currentProfile);
   showPage('dispatchPage');
 }
 
@@ -925,7 +930,7 @@ function haversineNmBetweenPoints(originLat, originLon, destinationLat, destinat
 
   const c = 2 * Math.atan2(Math.sqrt(inner), Math.sqrt(1 - inner));
   const km = 6371 * c;
-  return Math.round(km * 0.539957);
+  return Math.round(km * NM_PER_KM);
 }
 
 function haversineNm(originIcao, destinationIcao) {
@@ -945,7 +950,7 @@ function estimateEtaLabel(flight) {
     typeof flight.last_lat !== 'number' ||
     typeof flight.last_lng !== 'number' ||
     typeof flight.last_speed !== 'number' ||
-    flight.last_speed <= 40
+    flight.last_speed <= MIN_VALID_TRACKING_SPEED_KTS
   ) {
     return 'Unavailable';
   }
@@ -1051,6 +1056,7 @@ function renderGeneratedDispatch(routePlan) {
     `Route returns to base by leg ${routePlan.legs.length}.`;
 
   document.getElementById('startTrackingBtn').style.display = 'block';
+  if (currentProfile) renderOnboardingCard(currentProfile);
 }
 
 function generateDispatch() {
@@ -1383,10 +1389,12 @@ async function loadTrackingHistory() {
 
   list.innerHTML = '';
   if (!data || data.length === 0) {
+    hasTrackingHistory = false;
     empty.style.display = 'block';
     return;
   }
 
+  hasTrackingHistory = true;
   empty.style.display = 'none';
   data.forEach((flight) => {
     const item = document.createElement('li');
@@ -1411,6 +1419,7 @@ async function loadTrackingHistory() {
     `;
     list.appendChild(item);
   });
+  if (currentProfile) renderOnboardingCard(currentProfile);
 }
 
 function renderOnboardingCard(profile) {
@@ -1418,13 +1427,16 @@ function renderOnboardingCard(profile) {
   if (!onboardingList) return;
 
   const hasRatings = Array.isArray(profile?.type_ratings) && profile.type_ratings.length > 0;
-  const isNewPilot = Number(profile?.hours || 0) < 5;
+  const isNewPilot = Number(profile?.hours || 0) < NEW_PILOT_HOURS_THRESHOLD;
+  const hasBase = !!profile?.base_airport;
+  const hasAcceptedJob = !!acceptedJob;
+  const hasDispatch = !!latestGeneratedDispatch?.legs?.length;
 
   onboardingList.innerHTML = `
-    <li>✅ Set your base airport</li>
-    <li>✅ Accept a job in Job Market</li>
-    <li>✅ Generate dispatch route (2–3 legs)</li>
-    <li>✅ Start tracking from Dispatch Center</li>
+    <li>${hasBase ? '✅' : '⬜'} Set your base airport</li>
+    <li>${hasAcceptedJob ? '✅' : '⬜'} Accept a job in Job Market</li>
+    <li>${hasDispatch ? '✅' : '⬜'} Generate dispatch route (2–3 legs)</li>
+    <li>${hasTrackingHistory ? '✅' : '⬜'} Start tracking from Dispatch Center</li>
     <li>${hasRatings ? '✅' : '⬜'} Buy your first type rating in Pilot Shop</li>
     <li>${isNewPilot ? '⬜' : '✅'} Complete your first validated flight</li>
   `;
