@@ -1279,7 +1279,7 @@ async function createTrackingSession(trackingSource) {
   const callsignRaw = simbriefCallsign || fallbackCallsign;
   const callsign = callsignRaw.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, MAX_CALLSIGN_LENGTH) || fallbackCallsign;
 
-  const { data: existingTracking } = await supabaseClient
+  const { data: existingTracking, error: existingTrackingError } = await supabaseClient
     .from('flight_tracking')
     .select('*')
     .eq('user_id', currentUser.id)
@@ -1287,6 +1287,10 @@ async function createTrackingSession(trackingSource) {
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle();
+  if (existingTrackingError) {
+    console.warn('Failed to check existing tracking session:', existingTrackingError.message);
+    return null;
+  }
   if (existingTracking) return existingTracking;
 
   const payload = {

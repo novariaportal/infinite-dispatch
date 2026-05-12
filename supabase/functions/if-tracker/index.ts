@@ -225,24 +225,48 @@ serve(async () => {
         }
       }
 
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("id, hours, balance, pay_multiplier")
         .eq("id", tracking.user_id)
         .maybeSingle();
 
-      if (profile) {
-        const payMultiplier = Number(profile.pay_multiplier || 1);
-        const payAward = Math.max(0, Math.round(distanceNm * BASE_PAY_PER_NM * payMultiplier));
-        const hourAward = Math.max(1, Math.round(distanceNm / NM_PER_HOUR_BASELINE));
-
+      if (profileError) {
+        console.error(`Failed to load profile for tracking ${tracking.id}:`, profileError.message);
         await supabase
-          .from("profiles")
-          .update({
-            balance: Number(profile.balance || 0) + payAward,
-            hours: Number(profile.hours || 0) + hourAward
-          })
-          .eq("id", profile.id);
+          .from("flight_tracking")
+          .update({ updated_at: new Date().toISOString() })
+          .eq("id", tracking.id);
+        continue;
+      }
+
+      if (!profile) {
+        await supabase
+          .from("flight_tracking")
+          .update({ updated_at: new Date().toISOString() })
+          .eq("id", tracking.id);
+        continue;
+      }
+
+      const payMultiplier = Number(profile.pay_multiplier || 1);
+      const payAward = Math.max(0, Math.round(distanceNm * BASE_PAY_PER_NM * payMultiplier));
+      const hourAward = Math.max(1, Math.round(distanceNm / NM_PER_HOUR_BASELINE));
+
+      const { error: rewardError } = await supabase
+        .from("profiles")
+        .update({
+          balance: Number(profile.balance || 0) + payAward,
+          hours: Number(profile.hours || 0) + hourAward
+        })
+        .eq("id", profile.id);
+
+      if (rewardError) {
+        console.error(`Failed to apply reward for tracking ${tracking.id}:`, rewardError.message);
+        await supabase
+          .from("flight_tracking")
+          .update({ updated_at: new Date().toISOString() })
+          .eq("id", tracking.id);
+        continue;
       }
 
       await supabase
