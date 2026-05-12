@@ -22,6 +22,10 @@ const NM_PER_KM = 0.539957;
 const MIN_VALID_TRACKING_SPEED_KTS = 40;
 const NEW_PILOT_HOURS_THRESHOLD = 5;
 const AIRLABS_MAX_LIMIT = 50;
+const AIRLABS_FETCH_MAX_PAGES = 3;
+const AIRLABS_MAX_CANDIDATES = 40;
+const AIRLABS_FRONTEND_CACHE_TTL_MS = 2 * 60 * 1000;
+const AIRLABS_FRONTEND_CACHE_MAX_ENTRIES = 120;
 const LICENSE_LEVELS = ['PPL', 'CPL', 'MPL', 'ATPL'];
 const LICENSE_META = {
   PPL: { position: 'FO', multiplier: 1.0 },
@@ -272,6 +276,17 @@ function pickRandom(list) {
   return list[randomInt(0, list.length - 1)];
 }
 
+function shuffleArray(input = []) {
+  const list = input.slice();
+  for (let i = list.length - 1; i > 0; i -= 1) {
+    const j = randomInt(0, i);
+    const temp = list[i];
+    list[i] = list[j];
+    list[j] = temp;
+  }
+  return list;
+}
+
 function uniqueStrings(arr) {
   return [...new Set((arr || []).filter(Boolean).map((x) => String(x).trim()))];
 }
@@ -392,14 +407,15 @@ async function fetchAirlabsCandidateLegs(params = {}) {
   baseParams.limit = AIRLABS_MAX_LIMIT;
 
   const cacheKey = buildAirlabsCacheKey({ ...baseParams, maxRangeNm: Math.floor(maxRangeNm || 0) });
-  if (airlabsCandidateCache[cacheKey]) return airlabsCandidateCache[cacheKey];
+  const cachedEntry = airlabsCandidateCache[cacheKey];
+  if (cachedEntry && cachedEntry.expiresAt > Date.now()) return cachedEntry.legs;
 
   let offset = 0;
   let hasMore = true;
   let pages = 0;
   const candidates = [];
 
-  while (hasMore && pages < 3 && candidates.length < 40) {
+  while (hasMore && pages < AIRLABS_FETCH_MAX_PAGES && candidates.length < AIRLABS_MAX_CANDIDATES) {
     const payload = await fetchAirlabsRoutes({ ...baseParams, offset });
     const rows = Array.isArray(payload?.data) ? payload.data : [];
     rows.forEach((row) => {
@@ -432,7 +448,18 @@ async function fetchAirlabsCandidateLegs(params = {}) {
     deduped.push(leg);
   });
 
-  airlabsCandidateCache[cacheKey] = deduped;
+  const cacheKeys = Object.keys(airlabsCandidateCache);
+  if (cacheKeys.length >= AIRLABS_FRONTEND_CACHE_MAX_ENTRIES) {
+    cacheKeys
+      .sort((a, b) => airlabsCandidateCache[a].expiresAt - airlabsCandidateCache[b].expiresAt)
+      .slice(0, Math.ceil(AIRLABS_FRONTEND_CACHE_MAX_ENTRIES / 4))
+      .forEach((key) => delete airlabsCandidateCache[key]);
+  }
+
+  airlabsCandidateCache[cacheKey] = {
+    legs: deduped,
+    expiresAt: Date.now() + AIRLABS_FRONTEND_CACHE_TTL_MS
+  };
   return deduped;
 }
 
@@ -462,9 +489,9 @@ async function buildAirlabsDispatchLegs(base, airline, aircraftName, seedLeg = n
     airline,
     maxRangeNm
   });
-  const shuffledSecondLegs = secondLegCandidates
-    .filter((leg) => leg.destination !== base)
-    .sort(() => Math.random() - 0.5);
+  const shuffledSecondLegs = shuffleArray(
+    secondLegCandidates.filter((leg) => leg.destination !== base)
+  );
 
   for (const secondLeg of shuffledSecondLegs) {
     const finalLegCandidates = await fetchAirlabsCandidateLegs({
