@@ -250,10 +250,6 @@ function uniqueStrings(arr) {
   return [...new Set((arr || []).filter(Boolean).map((x) => String(x).trim()))];
 }
 
-function canonicalizeAirlineName(rawName = '') {
-  return normalizeAirlineName(rawName);
-}
-
 function normalizeAirlineName(rawName = '') {
   let name = String(rawName || '').replace(/\s+/g, ' ').trim();
   if (!name) return null;
@@ -583,8 +579,8 @@ async function registerAccount() {
     }
 
     currentUser = loginResult.data.user;
-    const ensuredProfile = await ensureProfile(currentUser, baseAirport);
-    currentProfile = await refreshDerivedProfile(ensuredProfile);
+    const profile = await ensureProfile(currentUser, baseAirport);
+    currentProfile = await refreshDerivedProfile(profile);
     await initializeDashboard();
   } catch (err) {
     console.error('Register error:', err);
@@ -804,7 +800,7 @@ async function generatePassengerJob(index) {
     const operators = await fetchAircraftOperators(aircraft.id);
     if (!operators.length) continue;
 
-    const airline = canonicalizeAirlineName(pickRandom(operators));
+    const airline = normalizeAirlineName(pickRandom(operators));
     if (!airline || !AIRLINE_ROUTE_PROFILES[airline]) continue;
 
     const previewLegs = buildCuratedRoute(base, airline, aircraft.displayName || aircraft.name);
@@ -843,7 +839,7 @@ function renderJobMarket() {
     const item = document.createElement('div');
     item.className = 'list-item';
     item.innerHTML = `
-      <div class="list-row"><strong>${canonicalizeAirlineName(job.airline) || 'Unknown Airline'}</strong><span>$${job.pay.toLocaleString()}</span></div>
+      <div class="list-row"><strong>${normalizeAirlineName(job.airline) || 'Unknown Airline'}</strong><span>$${job.pay.toLocaleString()}</span></div>
       <div class="list-row muted"><span>${job.aircraft}</span><span>${job.distanceNm} nm</span></div>
       <div class="list-row muted"><span>Passenger Service: Yes</span><span>${getTypeRatingMultiplier(job.aircraft) > 1 ? 'Type Rating Bonus Applied' : 'Standard Type Rating Pay'}</span></div>
       <button onclick="acceptJob('${job.id}')">Accept Job</button>
@@ -866,7 +862,7 @@ async function loadJobMarket() {
     attempts += 1;
     if (!job) continue;
 
-    const canonicalAirline = canonicalizeAirlineName(job.airline);
+    const canonicalAirline = normalizeAirlineName(job.airline);
     if (!canonicalAirline || !AIRLINE_ROUTE_PROFILES[canonicalAirline]) continue;
     job.airline = canonicalAirline;
 

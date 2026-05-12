@@ -53,7 +53,7 @@ function getEmployerOptions(profile) {
 }
 
 function getLicenseOptions(profile) {
-  const baseOptions = LICENSE_OPTIONS.length ? [...LICENSE_OPTIONS] : ['CPL'];
+  const baseOptions = [...LICENSE_OPTIONS];
   if (profile.license && !baseOptions.includes(profile.license)) {
     return [profile.license, ...baseOptions];
   }
