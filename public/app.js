@@ -251,8 +251,7 @@ function uniqueStrings(arr) {
 }
 
 function canonicalizeAirlineName(rawName = '') {
-  const normalized = normalizeAirlineName(rawName);
-  return normalized || String(rawName || '').replace(/\s+/g, ' ').trim() || null;
+  return normalizeAirlineName(rawName);
 }
 
 function normalizeAirlineName(rawName = '') {
@@ -584,7 +583,8 @@ async function registerAccount() {
     }
 
     currentUser = loginResult.data.user;
-    currentProfile = await refreshDerivedProfile(await ensureProfile(currentUser, baseAirport));
+    const ensuredProfile = await ensureProfile(currentUser, baseAirport);
+    currentProfile = await refreshDerivedProfile(ensuredProfile);
     await initializeDashboard();
   } catch (err) {
     console.error('Register error:', err);
@@ -658,7 +658,11 @@ function restoreLiveryCache() {
 
     const sanitizedCache = {};
     Object.keys(parsed).forEach((aircraftId) => {
-      const canonicalOperators = uniqueStrings((parsed[aircraftId] || []).map((name) => normalizeAirlineName(name)).filter((name) => name && AIRLINE_ROUTE_PROFILES[name]));
+      const rawOperators = Array.isArray(parsed[aircraftId]) ? parsed[aircraftId] : [];
+      const normalizedOperators = rawOperators
+        .map((name) => normalizeAirlineName(name))
+        .filter((name) => name && AIRLINE_ROUTE_PROFILES[name]);
+      const canonicalOperators = uniqueStrings(normalizedOperators);
       if (canonicalOperators.length) sanitizedCache[aircraftId] = canonicalOperators;
     });
 

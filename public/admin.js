@@ -47,7 +47,17 @@ function buildSelectOptions(options, selectedValue) {
 }
 
 function getEmployerOptions(profile) {
-  return [...new Set([...DEFAULT_EMPLOYER_OPTIONS, profile.employer].filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  const combined = [...DEFAULT_EMPLOYER_OPTIONS, profile.employer].filter(Boolean);
+  const deduped = [...new Set(combined)];
+  return deduped.sort((a, b) => a.localeCompare(b));
+}
+
+function getLicenseOptions(profile) {
+  const baseOptions = LICENSE_OPTIONS.length ? [...LICENSE_OPTIONS] : ['CPL'];
+  if (profile.license && !baseOptions.includes(profile.license)) {
+    return [profile.license, ...baseOptions];
+  }
+  return baseOptions;
 }
 
 function profileCard(profile) {
@@ -55,7 +65,8 @@ function profileCard(profile) {
   wrap.className = 'list-item';
   const profileName = escapeHtml(profile.username || profile.id);
   const profileId = escapeHtml(profile.id);
-  const selectedLicense = LICENSE_OPTIONS.includes(profile.license) ? profile.license : LICENSE_OPTIONS[0];
+  const licenseOptions = getLicenseOptions(profile);
+  const selectedLicense = licenseOptions.includes(profile.license) ? profile.license : licenseOptions[0];
   const employerOptions = getEmployerOptions(profile);
 
   wrap.innerHTML = `
@@ -66,7 +77,7 @@ function profileCard(profile) {
     <input id="slots_${profile.id}" type="number" value="${profile.job_slots ?? 0}">
     <label>License(s)</label>
     <select id="license_${profile.id}">
-      ${buildSelectOptions(LICENSE_OPTIONS, selectedLicense)}
+      ${buildSelectOptions(licenseOptions, selectedLicense)}
     </select>
     <label>Position</label>
     <input id="position_${profile.id}" type="text" value="${profile.position || ''}">
