@@ -21,6 +21,11 @@ const MAX_CALLSIGN_LENGTH = 12;
 const NM_PER_KM = 0.539957;
 const MIN_VALID_TRACKING_SPEED_KTS = 40;
 const NEW_PILOT_HOURS_THRESHOLD = 5;
+const AIRLABS_MAX_LIMIT = 50;
+const AIRLABS_FETCH_MAX_PAGES = 3;
+const AIRLABS_MAX_CANDIDATES = 40;
+const AIRLABS_FRONTEND_CACHE_TTL_MS = 2 * 60 * 1000;
+const AIRLABS_FRONTEND_CACHE_MAX_ENTRIES = 120;
 const LICENSE_LEVELS = ['PPL', 'CPL', 'MPL', 'ATPL'];
 const LICENSE_META = {
   PPL: { position: 'FO', multiplier: 1.0 },
@@ -46,6 +51,7 @@ let availableJobs = [];
 let acceptedJob = null;
 let passengerAircraftCatalog = [];
 let liveryCache = {};
+let airlabsCandidateCache = {};
 let hasTrackingHistory = false;
 
 const POPULARITY_MULTIPLIER = {
@@ -98,6 +104,25 @@ const AIRCRAFT_RANGE_NM = {
 };
 
 const DEFAULT_EMPLOYERS = ['Singapore Airlines', 'Qantas', 'Emirates', 'KLM', 'British Airways', 'United Airlines'];
+const AIRLINE_CODE_LOOKUP = {
+  Qantas: { iata: 'QF', icao: 'QFA' },
+  'Singapore Airlines': { iata: 'SQ', icao: 'SIA' },
+  Emirates: { iata: 'EK', icao: 'UAE' },
+  KLM: { iata: 'KL', icao: 'KLM' },
+  'British Airways': { iata: 'BA', icao: 'BAW' },
+  'United Airlines': { iata: 'UA', icao: 'UAL' },
+  Saudia: { iata: 'SV', icao: 'SVA' },
+  'Qatar Airways': { iata: 'QR', icao: 'QTR' },
+  'Etihad Airways': { iata: 'EY', icao: 'ETD' },
+  Lufthansa: { iata: 'LH', icao: 'DLH' },
+  'Air France': { iata: 'AF', icao: 'AFR' },
+  'Cathay Pacific': { iata: 'CX', icao: 'CPA' },
+  ANA: { iata: 'NH', icao: 'ANA' },
+  'Japan Airlines': { iata: 'JL', icao: 'JAL' },
+  'Turkish Airlines': { iata: 'TK', icao: 'THY' },
+  'Delta Air Lines': { iata: 'DL', icao: 'DAL' },
+  'American Airlines': { iata: 'AA', icao: 'AAL' }
+};
 
 const AIRPORTS = {
   WSSS: { name: 'Singapore', region: 'SEA', lat: 1.35, lon: 103.99 },
@@ -251,6 +276,17 @@ function pickRandom(list) {
   return list[randomInt(0, list.length - 1)];
 }
 
+function shuffleArray(input = []) {
+  const list = input.slice();
+  for (let i = list.length - 1; i > 0; i -= 1) {
+    const j = randomInt(0, i);
+    const swappedValue = list[i];
+    list[i] = list[j];
+    list[j] = swappedValue;
+  }
+  return list;
+}
+
 function uniqueStrings(arr) {
   return [...new Set((arr || []).filter(Boolean).map((x) => String(x).trim()))];
 }
@@ -309,6 +345,167 @@ function getAircraftRangeNm(aircraftName = '') {
   if (size === 'mid') return 5000;
   if (size === 'narrow') return 3200;
   return 1200;
+}
+
+function getAirlineCodes(airlineName = '') {
+  return AIRLINE_CODE_LOOKUP[airlineName] || null;
+}
+
+async function getCurrentAccessToken() {
+  try {
+    const { data } = await supabaseClient.auth.getSession();
+    return data?.session?.access_token || null;
+  } catch {
+    return null;
+  }
+}
+
+function buildAirlabsCacheKey(params = {}) {
+  return Object.entries(params)
+    .filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== '')
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => `${key}:${String(value).toUpperCase()}`)
+    .join('|');
+}
+
+async function fetchAirlabsRoutes(params = {}) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || String(value).trim() === '') return;
+    query.set(key, String(value));
+  });
+
+  if (!query.has('limit')) query.set('limit', String(AIRLABS_MAX_LIMIT));
+  if (!query.has('_fields')) {
+    query.set('_fields', 'airline_iata,airline_icao,flight_number,dep_icao,arr_icao,duration,days');
+  }
+
+  const token = await getCurrentAccessToken();
+  const headers = {
+    apikey: supabasePublishableKey,
+    Authorization: `Bearer ${token || supabasePublishableKey}`
+  };
+
+  const res = await fetch(`${supabaseUrl}/functions/v1/airlabs-routes?${query.toString()}`, { headers });
+  if (!res.ok) return { data: [], request: { has_more: false } };
+  const payload = await res.json();
+  return payload || { data: [], request: { has_more: false } };
+}
+
+async function fetchAirlabsCandidateLegs(params = {}) {
+  const dep = String(params.dep_icao || '').trim().toUpperCase();
+  const arr = String(params.arr_icao || '').trim().toUpperCase();
+  const airline = String(params.airline || '').trim();
+  const maxRangeNm = Number(params.maxRangeNm || 0);
+  const baseParams = {};
+  if (dep) baseParams.dep_icao = dep;
+  if (arr) baseParams.arr_icao = arr;
+
+  const codes = getAirlineCodes(airline);
+  if (codes?.iata) baseParams.airline_iata = codes.iata;
+  if (codes?.icao) baseParams.airline_icao = codes.icao;
+  baseParams.limit = AIRLABS_MAX_LIMIT;
+
+  const cacheKey = buildAirlabsCacheKey({ ...baseParams, maxRangeNm: Math.floor(maxRangeNm || 0) });
+  const cachedEntry = airlabsCandidateCache[cacheKey];
+  if (cachedEntry && cachedEntry.expiresAt > Date.now()) return cachedEntry.legs;
+
+  let offset = 0;
+  let hasMore = true;
+  let pages = 0;
+  const candidates = [];
+
+  while (hasMore && pages < AIRLABS_FETCH_MAX_PAGES && candidates.length < AIRLABS_MAX_CANDIDATES) {
+    const payload = await fetchAirlabsRoutes({ ...baseParams, offset });
+    const rows = Array.isArray(payload?.data) ? payload.data : [];
+    rows.forEach((row) => {
+      const origin = String(row?.dep_icao || '').toUpperCase();
+      const destination = String(row?.arr_icao || '').toUpperCase();
+      if (!AIRPORTS[origin] || !AIRPORTS[destination]) return;
+      if (origin === destination) return;
+      if (maxRangeNm && !routeWithinRange(origin, destination, maxRangeNm)) return;
+
+      candidates.push({
+        origin,
+        destination,
+        flightNumber: row?.flight_number || null,
+        days: Array.isArray(row?.days) ? row.days : [],
+        durationMinutes: Number.isFinite(Number(row?.duration)) ? Number(row.duration) : null
+      });
+    });
+
+    hasMore = Boolean(payload?.request?.has_more);
+    offset += AIRLABS_MAX_LIMIT;
+    pages += 1;
+  }
+
+  const deduped = [];
+  const seen = new Set();
+  candidates.forEach((leg) => {
+    const signature = `${leg.origin}-${leg.destination}-${leg.flightNumber || ''}`;
+    if (seen.has(signature)) return;
+    seen.add(signature);
+    deduped.push(leg);
+  });
+
+  const cacheKeys = Object.keys(airlabsCandidateCache);
+  if (cacheKeys.length >= AIRLABS_FRONTEND_CACHE_MAX_ENTRIES) {
+    cacheKeys
+      .sort((a, b) => airlabsCandidateCache[a].expiresAt - airlabsCandidateCache[b].expiresAt)
+      .slice(0, Math.ceil(AIRLABS_FRONTEND_CACHE_MAX_ENTRIES / 4))
+      .forEach((key) => delete airlabsCandidateCache[key]);
+  }
+
+  airlabsCandidateCache[cacheKey] = {
+    legs: deduped,
+    expiresAt: Date.now() + AIRLABS_FRONTEND_CACHE_TTL_MS
+  };
+  return deduped;
+}
+
+async function buildAirlabsDispatchLegs(base, airline, aircraftName, seedLeg = null) {
+  const maxRangeNm = getAircraftRangeNm(aircraftName);
+  const firstLegCandidates = await fetchAirlabsCandidateLegs({ dep_icao: base, airline, maxRangeNm });
+  if (!firstLegCandidates.length) return [];
+
+  const preferredSeed = seedLeg && routeWithinRange(seedLeg.origin, seedLeg.destination, maxRangeNm)
+    ? firstLegCandidates.find((leg) => leg.origin === seedLeg.origin && leg.destination === seedLeg.destination)
+    : null;
+  const firstLeg = preferredSeed || pickRandom(firstLegCandidates);
+  if (!firstLeg) return [];
+
+  const directReturnCandidates = await fetchAirlabsCandidateLegs({
+    dep_icao: firstLeg.destination,
+    arr_icao: base,
+    airline,
+    maxRangeNm
+  });
+  if (directReturnCandidates.length) {
+    return [firstLeg, pickRandom(directReturnCandidates)];
+  }
+
+  const secondLegCandidates = await fetchAirlabsCandidateLegs({
+    dep_icao: firstLeg.destination,
+    airline,
+    maxRangeNm
+  });
+  const shuffledSecondLegs = shuffleArray(
+    secondLegCandidates.filter((leg) => leg.destination !== base)
+  );
+
+  for (const secondLeg of shuffledSecondLegs) {
+    const finalLegCandidates = await fetchAirlabsCandidateLegs({
+      dep_icao: secondLeg.destination,
+      arr_icao: base,
+      airline,
+      maxRangeNm
+    });
+    if (finalLegCandidates.length) {
+      return [firstLeg, secondLeg, pickRandom(finalLegCandidates)];
+    }
+  }
+
+  return [];
 }
 
 function licenseStateFor(licenseCode = 'PPL') {
@@ -638,6 +835,7 @@ async function logout() {
   latestGeneratedDispatch = null;
   acceptedJob = null;
   availableJobs = [];
+  airlabsCandidateCache = {};
   document.getElementById('userInfo').innerText = 'Not logged in';
   showSection('landingSection');
 }
@@ -845,10 +1043,25 @@ async function generatePassengerJob(index) {
     const airline = normalizeAirlineName(pickRandom(operators));
     if (!airline || !AIRLINE_ROUTE_PROFILES[airline]) continue;
 
-    const previewLegs = buildCuratedRoute(base, airline, aircraft.displayName || aircraft.name);
-    if (previewLegs.length < 2 || previewLegs.length > 3) continue;
+    const maxRangeNm = getAircraftRangeNm(aircraft.displayName || aircraft.name);
+    const airlabsLegs = await fetchAirlabsCandidateLegs({
+      dep_icao: base,
+      airline,
+      maxRangeNm
+    });
 
-    const distanceNm = randomDistanceForAircraft(aircraft.name);
+    let distanceNm = 0;
+    let seedLeg = null;
+
+    if (airlabsLegs.length) {
+      seedLeg = pickRandom(airlabsLegs);
+      distanceNm = haversineNm(seedLeg.origin, seedLeg.destination);
+    } else {
+      const previewLegs = buildCuratedRoute(base, airline, aircraft.displayName || aircraft.name);
+      if (previewLegs.length < 2 || previewLegs.length > 3) continue;
+      distanceNm = randomDistanceForAircraft(aircraft.name);
+    }
+
     const pay = calculateJobPay(distanceNm, aircraft.name);
 
     return {
@@ -858,7 +1071,8 @@ async function generatePassengerJob(index) {
       aircraft: aircraft.displayName || aircraft.name,
       distanceNm,
       pay,
-      passengerService: true
+      passengerService: true,
+      airlabsSeedLeg: seedLeg
     };
   }
 
@@ -1079,10 +1293,16 @@ function renderGeneratedDispatch(routePlan) {
     .join('\n');
 
   const totalPay = Math.round(routePlan.legs.reduce((sum, l) => sum + l.pay, 0));
+  const sourceLabel = routePlan.routeSource === 'airlabs'
+    ? 'AirLabs schedule data'
+    : routePlan.routeSource === 'curated'
+      ? 'Curated fallback'
+      : 'Unknown route source';
 
   document.getElementById('dispatchResult').innerText =
     `${routePlan.airline} | ${routePlan.aircraft}\n` +
     `Passenger Service: Yes\n` +
+    `Route Source: ${sourceLabel}\n` +
     `${text}\n` +
     `Total Dispatch Pay: $${totalPay.toLocaleString()}\n` +
     `Route returns to base by leg ${routePlan.legs.length}.`;
@@ -1091,7 +1311,7 @@ function renderGeneratedDispatch(routePlan) {
   if (currentProfile) renderOnboardingCard(currentProfile);
 }
 
-function generateDispatch() {
+async function generateDispatch() {
   if (!acceptedJob || !currentProfile) {
     alert('Accept a job first.');
     return;
@@ -1099,7 +1319,20 @@ function generateDispatch() {
 
   const base = (currentProfile.base_airport || 'WSSS').toUpperCase();
   const maxRangeNm = getAircraftRangeNm(acceptedJob.aircraft);
-  const legs = buildCuratedRoute(base, acceptedJob.airline, acceptedJob.aircraft);
+  let legs = [];
+  let routeSource = 'airlabs';
+
+  try {
+    legs = await buildAirlabsDispatchLegs(base, acceptedJob.airline, acceptedJob.aircraft, acceptedJob.airlabsSeedLeg || null);
+  } catch (err) {
+    console.warn('AirLabs dispatch generation failed, using fallback:', err);
+  }
+
+  if (legs.length < 2 || legs.length > 3) {
+    legs = buildCuratedRoute(base, acceptedJob.airline, acceptedJob.aircraft);
+    routeSource = 'curated';
+  }
+
   if (legs.length < 2 || legs.length > 3) {
     alert('Unable to generate a valid multi-leg route. Try another job.');
     return;
@@ -1123,6 +1356,7 @@ function generateDispatch() {
     airline: acceptedJob.airline,
     aircraft: acceptedJob.aircraft,
     passengerService: true,
+    routeSource,
     legs: routeLegs
   };
 
