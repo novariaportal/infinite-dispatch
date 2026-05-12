@@ -464,7 +464,7 @@ async function buildAirlabsDispatchLegs(base, airline, aircraftName, seedLeg = n
   });
   const shuffledSecondLegs = secondLegCandidates
     .filter((leg) => leg.destination !== base)
-    .sort(() => randomInt(-1, 1));
+    .sort(() => Math.random() - 0.5);
 
   for (const secondLeg of shuffledSecondLegs) {
     const finalLegCandidates = await fetchAirlabsCandidateLegs({
