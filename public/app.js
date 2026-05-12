@@ -351,15 +351,6 @@ function getAirlineCodes(airlineName = '') {
   return AIRLINE_CODE_LOOKUP[airlineName] || null;
 }
 
-async function getCurrentAccessToken() {
-  try {
-    const { data } = await supabaseClient.auth.getSession();
-    return data?.session?.access_token || null;
-  } catch {
-    return null;
-  }
-}
-
 function buildAirlabsCacheKey(params = {}) {
   return Object.entries(params)
     .filter(([, value]) => value !== undefined && value !== null && String(value).trim() !== '')
@@ -380,13 +371,7 @@ async function fetchAirlabsRoutes(params = {}) {
     query.set('_fields', 'airline_iata,airline_icao,flight_number,dep_icao,arr_icao,duration,days');
   }
 
-  const token = await getCurrentAccessToken();
-  const headers = {
-    apikey: supabasePublishableKey,
-    Authorization: `Bearer ${token || supabasePublishableKey}`
-  };
-
-  const res = await fetch(`${supabaseUrl}/functions/v1/airlabs-routes?${query.toString()}`, { headers });
+  const res = await fetch(`${supabaseUrl}/functions/v1/airlabs-routes?${query.toString()}`);
   if (!res.ok) return { data: [], request: { has_more: false } };
   const payload = await res.json();
   return payload || { data: [], request: { has_more: false } };
