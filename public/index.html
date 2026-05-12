@@ -20,14 +20,23 @@
 
     <main>
       <section id="authSection">
-        <div class="card auth-card">
-          <h2>Login or Register</h2>
-          <p>Use email/password and choose your base airport (ICAO) for first-time registration.</p>
-          <input type="email" id="email" placeholder="Email">
-          <input type="password" id="password" placeholder="Password">
-          <input type="text" id="baseAirport" placeholder="Base Airport ICAO (e.g., WSSS)">
-          <button onclick="login()">Login / Register</button>
-          <p class="forgot-link"><a href="#" onclick="toggleReset()">Forgot Password?</a></p>
+        <div class="auth-split">
+          <div class="card auth-card">
+            <h2>Login</h2>
+            <p>Sign in with your existing account.</p>
+            <input type="email" id="loginEmail" placeholder="Email">
+            <input type="password" id="loginPassword" placeholder="Password">
+            <button id="loginBtn" onclick="login()">Login</button>
+            <p class="forgot-link"><a href="#" onclick="toggleReset()">Forgot Password?</a></p>
+          </div>
+          <div class="card auth-card">
+            <h2>Register</h2>
+            <p>Create a new account and set your base airport ICAO.</p>
+            <input type="email" id="registerEmail" placeholder="Email">
+            <input type="password" id="registerPassword" placeholder="Password">
+            <input type="text" id="registerBaseAirport" placeholder="Base Airport ICAO (e.g., WSSS)">
+            <button id="registerBtn" onclick="registerAccount()">Register</button>
+          </div>
         </div>
       </section>
 

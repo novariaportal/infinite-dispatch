@@ -3,6 +3,26 @@ const supabasePublishableKey = window.SUPABASE_PUBLISHABLE_KEY;
 const supabaseClient = window.supabase.createClient(supabaseUrl, supabasePublishableKey);
 
 const ADMIN_PASSWORD = 'ifdispatchadmin';
+const LICENSE_OPTIONS = ['CPL', 'MPL', 'ATPL'];
+const DEFAULT_EMPLOYER_OPTIONS = [
+  'American Airlines',
+  'ANA',
+  'Air France',
+  'British Airways',
+  'Cathay Pacific',
+  'Delta Air Lines',
+  'Emirates',
+  'Etihad Airways',
+  'Japan Airlines',
+  'KLM',
+  'Lufthansa',
+  'Qantas',
+  'Qatar Airways',
+  'Saudia',
+  'Singapore Airlines',
+  'Turkish Airlines',
+  'United Airlines'
+];
 
 function formatRatings(raw) {
   return (raw || '')
@@ -11,17 +31,55 @@ function formatRatings(raw) {
     .filter(Boolean);
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function buildSelectOptions(options, selectedValue) {
+  return options
+    .map((value) => `<option value="${escapeHtml(value)}" ${value === selectedValue ? 'selected' : ''}>${escapeHtml(value)}</option>`)
+    .join('');
+}
+
+function getEmployerOptions(profile) {
+  const combined = [...DEFAULT_EMPLOYER_OPTIONS];
+  if (profile.employer != null && profile.employer !== '') combined.push(profile.employer);
+  const dedupedNonEmpty = [...new Set(combined)].sort((a, b) => a.localeCompare(b));
+  return ['', ...dedupedNonEmpty];
+}
+
+function getLicenseOptions(profile) {
+  const baseOptions = [...LICENSE_OPTIONS];
+  if (profile.license && !baseOptions.includes(profile.license)) {
+    return [profile.license, ...baseOptions];
+  }
+  return baseOptions;
+}
+
 function profileCard(profile) {
   const wrap = document.createElement('div');
   wrap.className = 'list-item';
+  const profileName = escapeHtml(profile.username || profile.id);
+  const profileId = escapeHtml(profile.id);
+  const licenseOptions = getLicenseOptions(profile);
+  const selectedLicense = licenseOptions.includes(profile.license) ? profile.license : licenseOptions[0];
+  const employerOptions = getEmployerOptions(profile);
+
   wrap.innerHTML = `
-    <div class="list-row"><strong>${profile.username || profile.id}</strong><span>${profile.id}</span></div>
+    <div class="list-row"><strong>${profileName}</strong><span>${profileId}</span></div>
     <label>Hours</label>
     <input id="hours_${profile.id}" type="number" value="${profile.hours ?? 0}">
     <label>Jobs / Job Slots</label>
     <input id="slots_${profile.id}" type="number" value="${profile.job_slots ?? 0}">
     <label>License(s)</label>
-    <input id="license_${profile.id}" type="text" value="${profile.license || ''}">
+    <select id="license_${profile.id}">
+      ${buildSelectOptions(licenseOptions, selectedLicense)}
+    </select>
     <label>Position</label>
     <input id="position_${profile.id}" type="text" value="${profile.position || ''}">
     <label>Pay Multiplier</label>
@@ -31,7 +89,9 @@ function profileCard(profile) {
     <label>Money / Balance</label>
     <input id="balance_${profile.id}" type="number" value="${profile.balance ?? 0}">
     <label>Employer</label>
-    <input id="employer_${profile.id}" type="text" value="${profile.employer || ''}">
+    <select id="employer_${profile.id}">
+      ${buildSelectOptions(employerOptions, profile.employer || '')}
+    </select>
     <label>Base Airport</label>
     <input id="base_${profile.id}" type="text" value="${profile.base_airport || ''}">
     <button onclick="saveProfile('${profile.id}')">Save Profile</button>
@@ -46,15 +106,9 @@ async function unlockAdmin() {
     return;
   }
 
-  const { data } = await supabaseClient.auth.getSession();
-  if (!data?.session?.user) {
-    alert('Log into Infinite Dispatch first. Admin is profiles-only and requires a signed-in profile context.');
-    return;
-  }
-
   document.getElementById('adminGate').style.display = 'none';
   document.getElementById('adminPanel').style.display = 'block';
-  document.getElementById('adminStatus').innerText = `Signed in as ${data.session.user.email}`;
+  document.getElementById('adminStatus').innerText = 'Admin unlocked, showing users.';
   await loadProfiles();
 }
 
@@ -62,21 +116,42 @@ async function loadProfiles() {
   const container = document.getElementById('profilesContainer');
   const filterId = document.getElementById('profileIdSearch').value.trim();
   container.innerHTML = '';
-
-  let query = supabaseClient
-    .from('profiles')
-    .select('id, username, hours, job_slots, license, position, pay_multiplier, type_ratings, balance, employer, base_airport')
-    .order('created_at', { ascending: false })
-    .limit(50);
+  const selectFields = 'id, username, hours, job_slots, license, position, pay_multiplier, type_ratings, balance, employer, base_airport';
+  let data = [];
 
   if (filterId) {
-    query = query.eq('id', filterId);
-  }
+    const { data: filteredData, error } = await supabaseClient
+      .from('profiles')
+      .select(selectFields)
+      .eq('id', filterId)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if (error) {
+      container.innerHTML = `<div class="list-item muted">${error.message}</div>`;
+      return;
+    }
+    data = filteredData || [];
+  } else {
+    const pageSize = 200;
+    let from = 0;
 
-  const { data, error } = await query;
-  if (error) {
-    container.innerHTML = `<div class="list-item muted">${error.message}</div>`;
-    return;
+    while (true) {
+      const { data: chunk, error } = await supabaseClient
+        .from('profiles')
+        .select(selectFields)
+        .order('created_at', { ascending: false })
+        .range(from, from + pageSize - 1);
+
+      if (error) {
+        container.innerHTML = `<div class="list-item muted">${error.message}</div>`;
+        return;
+      }
+
+      if (!chunk?.length) break;
+      data.push(...chunk);
+      if (chunk.length < pageSize) break;
+      from += pageSize;
+    }
   }
 
   if (!data || data.length === 0) {

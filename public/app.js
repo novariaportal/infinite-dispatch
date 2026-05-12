@@ -517,68 +517,28 @@ async function refreshDerivedProfile(profile) {
   return data;
 }
 
-function setAuthButtonLoading(isLoading) {
-  const btn = document.querySelector('button[onclick="login()"]');
+function setAuthButtonLoading(buttonId, isLoading, loadingText, idleText) {
+  const btn = document.getElementById(buttonId);
   if (!btn) return;
   btn.disabled = isLoading;
-  btn.innerText = isLoading ? 'Processing...' : 'Login / Register';
+  btn.innerText = isLoading ? loadingText : idleText;
 }
 
 async function login() {
-  const email = document.getElementById('email').value?.trim();
-  const password = document.getElementById('password').value;
-  const baseAirport = document.getElementById('baseAirport')?.value;
+  const email = document.getElementById('loginEmail')?.value?.trim();
+  const password = document.getElementById('loginPassword')?.value;
 
   if (!email || !password) return alert('Enter email and password');
 
   try {
-    setAuthButtonLoading(true);
+    setAuthButtonLoading('loginBtn', true, 'Logging in...', 'Login');
 
-    let { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
-
-    if (error) {
-      const msg = (error.message || '').toLowerCase();
-
-      if (msg.includes('invalid login credentials') || msg.includes('invalid credentials')) {
-        alert('Invalid email or password. If you already registered, use the same password.');
-        return;
-      }
-
-      if (msg.includes('rate limit') || msg.includes('too many')) {
-        alert(error.message);
-        return;
-      }
-
-      if (!baseAirport || baseAirport.trim().length < 4) {
-        return alert('Enter a Base Airport ICAO code (e.g., WSSS) to register.');
-      }
-
-      const signUpResult = await supabaseClient.auth.signUp({ email, password });
-      if (signUpResult.error) {
-        alert(signUpResult.error.message);
-        return;
-      }
-
-      const user = signUpResult.data.user;
-      if (!user) {
-        alert('Registration created. Please check your email to confirm your account, then log in.');
-        return;
-      }
-
-      await createProfile(user, baseAirport);
-
-      const loginResult = await supabaseClient.auth.signInWithPassword({ email, password });
-      if (loginResult.error) {
-        alert(loginResult.error.message);
-        return;
-      }
-
-      data = loginResult.data;
-    }
+    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    if (error) return alert(error.message);
 
     if (data?.user) {
       currentUser = data.user;
-      const profile = await ensureProfile(data.user, baseAirport);
+      const profile = await ensureProfile(data.user);
       currentProfile = await refreshDerivedProfile(profile);
       await initializeDashboard();
     }
@@ -586,7 +546,47 @@ async function login() {
     console.error('Login error:', err);
     alert(err?.message || String(err));
   } finally {
-    setAuthButtonLoading(false);
+    setAuthButtonLoading('loginBtn', false, 'Logging in...', 'Login');
+  }
+}
+
+async function registerAccount() {
+  const email = document.getElementById('registerEmail')?.value?.trim();
+  const password = document.getElementById('registerPassword')?.value;
+  const baseAirport = document.getElementById('registerBaseAirport')?.value;
+
+  if (!email || !password) return alert('Enter email and password');
+  if (!baseAirport || baseAirport.trim().length < 4) {
+    return alert('Enter a Base Airport ICAO code (e.g., WSSS) to register.');
+  }
+
+  try {
+    setAuthButtonLoading('registerBtn', true, 'Registering...', 'Register');
+    const signUpResult = await supabaseClient.auth.signUp({ email, password });
+    if (signUpResult.error) return alert(signUpResult.error.message);
+
+    const user = signUpResult.data.user;
+    if (!user) {
+      alert('Registration created. Please check your email to confirm your account, then log in.');
+      return;
+    }
+
+    await createProfile(user, baseAirport);
+    const loginResult = await supabaseClient.auth.signInWithPassword({ email, password });
+    if (loginResult.error) {
+      alert(loginResult.error.message);
+      return;
+    }
+
+    currentUser = loginResult.data.user;
+    const profile = await ensureProfile(currentUser, baseAirport);
+    currentProfile = await refreshDerivedProfile(profile);
+    await initializeDashboard();
+  } catch (err) {
+    console.error('Register error:', err);
+    alert(err?.message || String(err));
+  } finally {
+    setAuthButtonLoading('registerBtn', false, 'Registering...', 'Register');
   }
 }
 
@@ -647,7 +647,23 @@ function renderDashboard(profile) {
 function restoreLiveryCache() {
   try {
     const parsed = JSON.parse(localStorage.getItem(LIVERY_CACHE_KEY) || '{}');
-    liveryCache = parsed && typeof parsed === 'object' ? parsed : {};
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      liveryCache = {};
+      return;
+    }
+
+    const sanitizedCache = {};
+    Object.keys(parsed).forEach((aircraftId) => {
+      const rawOperators = Array.isArray(parsed[aircraftId]) ? parsed[aircraftId] : [];
+      const normalizedOperators = rawOperators
+        .map((name) => normalizeAirlineName(name))
+        .filter((name) => name && AIRLINE_ROUTE_PROFILES[name]);
+      const canonicalOperators = uniqueStrings(normalizedOperators);
+      if (canonicalOperators.length) sanitizedCache[aircraftId] = canonicalOperators;
+    });
+
+    liveryCache = sanitizedCache;
+    persistLiveryCache();
   } catch {
     liveryCache = {};
   }
@@ -714,7 +730,16 @@ async function loadAircraftCatalog() {
 }
 
 async function fetchAircraftOperators(aircraftId) {
-  if (liveryCache[aircraftId]?.length) return liveryCache[aircraftId];
+  if (liveryCache[aircraftId]?.length) {
+    const canonicalOperators = uniqueStrings(
+      liveryCache[aircraftId]
+        .map((name) => normalizeAirlineName(name))
+        .filter((name) => name && AIRLINE_ROUTE_PROFILES[name])
+    );
+
+    liveryCache[aircraftId] = canonicalOperators;
+    return canonicalOperators;
+  }
 
   try {
     const res = await fetch(`https://api.infiniteflight.com/public/v2/aircraft/${aircraftId}/liveries?apikey=${LIVERY_API_KEY}`);
@@ -775,8 +800,8 @@ async function generatePassengerJob(index) {
     const operators = await fetchAircraftOperators(aircraft.id);
     if (!operators.length) continue;
 
-    const airline = pickRandom(operators);
-    if (!airline) continue;
+    const airline = normalizeAirlineName(pickRandom(operators));
+    if (!airline || !AIRLINE_ROUTE_PROFILES[airline]) continue;
 
     const previewLegs = buildCuratedRoute(base, airline, aircraft.displayName || aircraft.name);
     if (previewLegs.length < 2 || previewLegs.length > 3) continue;
@@ -814,7 +839,7 @@ function renderJobMarket() {
     const item = document.createElement('div');
     item.className = 'list-item';
     item.innerHTML = `
-      <div class="list-row"><strong>${job.airline}</strong><span>$${job.pay.toLocaleString()}</span></div>
+      <div class="list-row"><strong>${normalizeAirlineName(job.airline) || 'Unknown Airline'}</strong><span>$${job.pay.toLocaleString()}</span></div>
       <div class="list-row muted"><span>${job.aircraft}</span><span>${job.distanceNm} nm</span></div>
       <div class="list-row muted"><span>Passenger Service: Yes</span><span>${getTypeRatingMultiplier(job.aircraft) > 1 ? 'Type Rating Bonus Applied' : 'Standard Type Rating Pay'}</span></div>
       <button onclick="acceptJob('${job.id}')">Accept Job</button>
@@ -836,6 +861,10 @@ async function loadJobMarket() {
     const job = await generatePassengerJob(attempts);
     attempts += 1;
     if (!job) continue;
+
+    const canonicalAirline = normalizeAirlineName(job.airline);
+    if (!canonicalAirline || !AIRLINE_ROUTE_PROFILES[canonicalAirline]) continue;
+    job.airline = canonicalAirline;
 
     const signature = `${job.airline}|${job.aircraft}|${job.distanceNm}`;
     if (seen.has(signature)) continue;
@@ -1371,6 +1400,7 @@ window.onThemeChange = onThemeChange;
 window.onGlassToggle = onGlassToggle;
 window.showPage = showPage;
 window.login = login;
+window.registerAccount = registerAccount;
 window.logout = logout;
 window.toggleReset = toggleReset;
 window.resetPassword = resetPassword;
