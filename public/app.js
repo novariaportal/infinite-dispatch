@@ -332,7 +332,7 @@ function resolveEmployerForBase(baseAirport, preferredEmployer = null) {
   const compatibleEmployers = getCompatibleEmployersForBase(baseAirport);
   const normalizedPreferred = normalizeAirlineName(preferredEmployer);
   if (normalizedPreferred && compatibleEmployers.includes(normalizedPreferred)) return normalizedPreferred;
-  return compatibleEmployers[0] || normalizedPreferred || DEFAULT_EMPLOYERS[0] || 'Singapore Airlines';
+  return compatibleEmployers[0] || normalizedPreferred || DEFAULT_EMPLOYERS[0];
 }
 
 function normalizeAirlineName(rawName = '') {
@@ -452,9 +452,9 @@ async function fetchAirlabsCandidateLegs(params = {}) {
     rows.forEach((row) => {
       const rowIata = String(row?.airline_iata || '').trim().toUpperCase();
       const rowIcao = String(row?.airline_icao || '').trim().toUpperCase();
-      const airlineMatched = !expectedIata && !expectedIcao
-        ? true
-        : (expectedIata && rowIata === expectedIata) || (expectedIcao && rowIcao === expectedIcao);
+      const airlineMatched = (!expectedIata && !expectedIcao)
+        || (expectedIata && rowIata === expectedIata)
+        || (expectedIcao && rowIcao === expectedIcao);
       if (!airlineMatched) return;
 
       const origin = String(row?.dep_icao || '').toUpperCase();
