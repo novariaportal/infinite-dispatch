@@ -353,6 +353,13 @@ pre {
   color: var(--muted);
 }
 
+.onboarding-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+
 @media (max-width: 960px) {
   .app-shell {
     grid-template-columns: 1fr;

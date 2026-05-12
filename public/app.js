@@ -17,6 +17,10 @@ const MANUFACTURER_PREFIX_PATTERN = /^(airbus|boeing|embraer|bombardier|cessna|c
 const JOB_WEIGHT_SCALE = 4;
 const BASE_PAY_PER_NM = 14;
 const BASE_TYPE_RATING_PRICE = 7000;
+const MAX_CALLSIGN_LENGTH = 12;
+const NM_PER_KM = 0.539957;
+const MIN_VALID_TRACKING_SPEED_KTS = 40;
+const NEW_PILOT_HOURS_THRESHOLD = 5;
 const LICENSE_LEVELS = ['PPL', 'CPL', 'MPL', 'ATPL'];
 const LICENSE_META = {
   PPL: { position: 'FO', multiplier: 1.0 },
@@ -42,6 +46,7 @@ let availableJobs = [];
 let acceptedJob = null;
 let passengerAircraftCatalog = [];
 let liveryCache = {};
+let hasTrackingHistory = false;
 
 const POPULARITY_MULTIPLIER = {
   'Airbus A320': 1.06,
@@ -642,6 +647,7 @@ function renderDashboard(profile) {
   document.getElementById('userBase').innerText = profile.base_airport || '----';
   document.getElementById('sidebarEmployer').innerText = `Employer: ${profile.employer || 'Unassigned'}`;
   document.getElementById('sidebarBase').innerText = `Base: ${profile.base_airport || '----'}`;
+  renderOnboardingCard(profile);
 }
 
 function restoreLiveryCache() {
@@ -903,6 +909,7 @@ function acceptJob(jobId) {
   document.getElementById('generateDispatchBtn').disabled = false;
   document.getElementById('dispatchResult').innerText = 'Accepted. Generate Flight / Dispatch when ready.';
   document.getElementById('startTrackingBtn').style.display = 'none';
+  if (currentProfile) renderOnboardingCard(currentProfile);
   showPage('dispatchPage');
 }
 
@@ -910,16 +917,12 @@ function getAirportRegion(icao) {
   return AIRPORTS[icao]?.region || 'SEA';
 }
 
-function haversineNm(originIcao, destinationIcao) {
-  const a = AIRPORTS[originIcao];
-  const b = AIRPORTS[destinationIcao];
-  if (!a || !b) return randomInt(300, 2200);
-
+function haversineNmBetweenPoints(originLat, originLon, destinationLat, destinationLon) {
   const toRad = (deg) => (deg * Math.PI) / 180;
-  const dLat = toRad(b.lat - a.lat);
-  const dLon = toRad(b.lon - a.lon);
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
+  const dLat = toRad(destinationLat - originLat);
+  const dLon = toRad(destinationLon - originLon);
+  const lat1 = toRad(originLat);
+  const lat2 = toRad(destinationLat);
 
   const inner =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
@@ -927,7 +930,39 @@ function haversineNm(originIcao, destinationIcao) {
 
   const c = 2 * Math.atan2(Math.sqrt(inner), Math.sqrt(1 - inner));
   const km = 6371 * c;
-  return Math.round(km * 0.539957);
+  return Math.round(km * NM_PER_KM);
+}
+
+function haversineNm(originIcao, destinationIcao) {
+  const a = AIRPORTS[originIcao];
+  const b = AIRPORTS[destinationIcao];
+  if (!a || !b) return randomInt(300, 2200);
+  return haversineNmBetweenPoints(a.lat, a.lon, b.lat, b.lon);
+}
+
+function estimateEtaLabel(flight) {
+  if (!flight?.destination || flight.status !== 'enroute') return '—';
+  if (
+    typeof flight.last_lat !== 'number' ||
+    typeof flight.last_lng !== 'number' ||
+    typeof flight.last_speed !== 'number' ||
+    flight.last_speed <= MIN_VALID_TRACKING_SPEED_KTS
+  ) {
+    return 'Unavailable';
+  }
+
+  const destination = AIRPORTS[flight.destination];
+  if (!destination) return 'Unavailable';
+
+  const remainingNm = haversineNmBetweenPoints(flight.last_lat, flight.last_lng, destination.lat, destination.lon);
+  const etaMinutes = Math.round((remainingNm / flight.last_speed) * 60);
+  if (!Number.isFinite(etaMinutes) || etaMinutes <= 0) return '<1m';
+  if (etaMinutes >= 60) {
+    const hours = Math.floor(etaMinutes / 60);
+    const minutes = etaMinutes % 60;
+    return `${hours}h ${minutes}m`;
+  }
+  return `${etaMinutes}m`;
 }
 
 function routeWithinRange(origin, destination, maxRangeNm) {
@@ -1017,6 +1052,7 @@ function renderGeneratedDispatch(routePlan) {
     `Route returns to base by leg ${routePlan.legs.length}.`;
 
   document.getElementById('startTrackingBtn').style.display = 'block';
+  if (currentProfile) renderOnboardingCard(currentProfile);
 }
 
 function generateDispatch() {
@@ -1237,9 +1273,25 @@ async function createTrackingSession(trackingSource) {
     ? `${source.airline.replace(/[^A-Z]/gi, '').slice(0, 3).toUpperCase()}${randomInt(100, 999)}`
     : 'DISPATCH1';
 
-  const callsign = latestSimbriefPlan?.general
-    ? `${latestSimbriefPlan.general.icao_airline}${latestSimbriefPlan.general.flight_number}`
-    : fallbackCallsign;
+  const simbriefCallsign = latestSimbriefPlan?.general
+    ? `${latestSimbriefPlan.general.icao_airline || ''}${latestSimbriefPlan.general.flight_number || ''}`.trim()
+    : '';
+  const callsignRaw = simbriefCallsign || fallbackCallsign;
+  const callsign = callsignRaw.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, MAX_CALLSIGN_LENGTH) || fallbackCallsign;
+
+  const { data: existingTracking, error: existingTrackingError } = await supabaseClient
+    .from('flight_tracking')
+    .select('*')
+    .eq('user_id', currentUser.id)
+    .eq('status', 'enroute')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (existingTrackingError) {
+    console.warn('Failed to check existing tracking session:', existingTrackingError.message);
+    return null;
+  }
+  if (existingTracking) return existingTracking;
 
   const payload = {
     user_id: currentUser.id,
@@ -1265,11 +1317,15 @@ async function createTrackingSession(trackingSource) {
 }
 
 async function fetchSimBrief() {
-  const sbUser = document.getElementById('sbUsername').value;
+  const sbUser = (document.getElementById('sbUsername').value || '').trim();
+  if (!sbUser) {
+    document.getElementById('sbResult').innerText = 'Enter your SimBrief username first.';
+    return;
+  }
   document.getElementById('sbResult').innerText = 'Fetching...';
 
   try {
-    const res = await fetch(`https://www.simbrief.com/api/xml.fetcher.php?username=${sbUser}&json=1`);
+    const res = await fetch(`https://www.simbrief.com/api/xml.fetcher.php?username=${encodeURIComponent(sbUser)}&json=1`);
     const data = await res.json();
 
     if (data.general) {
@@ -1289,6 +1345,11 @@ async function fetchSimBrief() {
 }
 
 async function dispatchFlight() {
+  if (!latestGeneratedDispatch?.legs?.length) {
+    alert('Generate a dispatch first.');
+    return;
+  }
+
   let source = null;
   if (latestGeneratedDispatch?.legs?.length) {
     source = {
@@ -1317,7 +1378,7 @@ async function loadTrackingHistory() {
 
   const { data, error } = await supabaseClient
     .from('flight_tracking')
-    .select('callsign, origin, destination, status, server_type, created_at')
+    .select('callsign, origin, destination, status, server_type, created_at, last_lat, last_lng, last_speed')
     .eq('user_id', currentUser.id)
     .order('created_at', { ascending: false })
     .limit(8);
@@ -1329,31 +1390,58 @@ async function loadTrackingHistory() {
 
   list.innerHTML = '';
   if (!data || data.length === 0) {
+    hasTrackingHistory = false;
     empty.style.display = 'block';
     return;
   }
 
+  hasTrackingHistory = true;
   empty.style.display = 'none';
   data.forEach((flight) => {
     const item = document.createElement('li');
     const route = [flight.origin, flight.destination].filter(Boolean).join(' -> ');
     const server = (flight.server_type || 'casual').toUpperCase();
-    const status = (flight.status || 'enroute').toUpperCase();
+    const statusRaw = String(flight.status || 'enroute');
+    const status = statusRaw.toLowerCase();
+    const statusLabel = statusRaw.toUpperCase();
     const created = flight.created_at ? new Date(flight.created_at).toLocaleString() : '';
+    const etaLabel = estimateEtaLabel({ ...flight, status });
 
     item.innerHTML = `
       <div class="history-line">
-        <span>${flight.callsign || 'DISPATCH'}</span>
+        <span>Callsign: ${flight.callsign || 'DISPATCH'}</span>
         <span>${route || 'Route pending'}</span>
       </div>
       <div class="history-meta">
         <span>${server}</span>
-        <span>${status}</span>
+        <span>${statusLabel}</span>
+        <span>ETA: ${etaLabel}</span>
         <span>${created}</span>
       </div>
     `;
     list.appendChild(item);
   });
+  if (currentProfile) renderOnboardingCard(currentProfile);
+}
+
+function renderOnboardingCard(profile) {
+  const onboardingList = document.getElementById('onboardingChecklist');
+  if (!onboardingList) return;
+
+  const hasRatings = Array.isArray(profile?.type_ratings) && profile.type_ratings.length > 0;
+  const isNewPilot = Number(profile?.hours || 0) < NEW_PILOT_HOURS_THRESHOLD;
+  const hasBase = !!profile?.base_airport;
+  const hasAcceptedJob = !!acceptedJob;
+  const hasDispatch = !!latestGeneratedDispatch?.legs?.length;
+
+  onboardingList.innerHTML = `
+    <li>${hasBase ? '✅' : '⬜'} Set your base airport</li>
+    <li>${hasAcceptedJob ? '✅' : '⬜'} Accept a job in Job Market</li>
+    <li>${hasDispatch ? '✅' : '⬜'} Generate dispatch route (2–3 legs)</li>
+    <li>${hasTrackingHistory ? '✅' : '⬜'} Start tracking from Dispatch Center</li>
+    <li>${hasRatings ? '✅' : '⬜'} Buy your first type rating in Pilot Shop</li>
+    <li>${isNewPilot ? '⬜' : '✅'} Complete your first validated flight</li>
+  `;
 }
 
 async function initializeDashboard() {
