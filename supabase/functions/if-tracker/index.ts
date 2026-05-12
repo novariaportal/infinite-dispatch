@@ -8,6 +8,7 @@ const SERVER_WORLD_TYPES = {
 };
 
 const BASE_PAY_PER_NM = 14;
+const NM_PER_HOUR_BASELINE = 420;
 const MIN_VALID_COMPLETION_DISTANCE_NM = 25;
 const MAX_VALID_COMPLETION_ALT_FT = 5000;
 const MAX_VALID_COMPLETION_GS_KTS = 260;
@@ -232,7 +233,7 @@ serve(async () => {
       if (profile) {
         const payMultiplier = Number(profile.pay_multiplier || 1);
         const payAward = Math.max(0, Math.round(distanceNm * BASE_PAY_PER_NM * payMultiplier));
-        const hourAward = Math.max(1, Math.round(distanceNm / 420));
+        const hourAward = Math.max(1, Math.round(distanceNm / NM_PER_HOUR_BASELINE));
 
         await supabase
           .from("profiles")

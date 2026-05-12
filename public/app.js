@@ -17,6 +17,7 @@ const MANUFACTURER_PREFIX_PATTERN = /^(airbus|boeing|embraer|bombardier|cessna|c
 const JOB_WEIGHT_SCALE = 4;
 const BASE_PAY_PER_NM = 14;
 const BASE_TYPE_RATING_PRICE = 7000;
+const MAX_CALLSIGN_LENGTH = 12;
 const LICENSE_LEVELS = ['PPL', 'CPL', 'MPL', 'ATPL'];
 const LICENSE_META = {
   PPL: { position: 'FO', multiplier: 1.0 },
@@ -911,27 +912,7 @@ function getAirportRegion(icao) {
   return AIRPORTS[icao]?.region || 'SEA';
 }
 
-function haversineNm(originIcao, destinationIcao) {
-  const a = AIRPORTS[originIcao];
-  const b = AIRPORTS[destinationIcao];
-  if (!a || !b) return randomInt(300, 2200);
-
-  const toRad = (deg) => (deg * Math.PI) / 180;
-  const dLat = toRad(b.lat - a.lat);
-  const dLon = toRad(b.lon - a.lon);
-  const lat1 = toRad(a.lat);
-  const lat2 = toRad(b.lat);
-
-  const inner =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-
-  const c = 2 * Math.atan2(Math.sqrt(inner), Math.sqrt(1 - inner));
-  const km = 6371 * c;
-  return Math.round(km * 0.539957);
-}
-
-function haversineFromCoordsNm(originLat, originLon, destinationLat, destinationLon) {
+function haversineNmBetweenPoints(originLat, originLon, destinationLat, destinationLon) {
   const toRad = (deg) => (deg * Math.PI) / 180;
   const dLat = toRad(destinationLat - originLat);
   const dLon = toRad(destinationLon - originLon);
@@ -945,6 +926,17 @@ function haversineFromCoordsNm(originLat, originLon, destinationLat, destination
   const c = 2 * Math.atan2(Math.sqrt(inner), Math.sqrt(1 - inner));
   const km = 6371 * c;
   return Math.round(km * 0.539957);
+}
+
+function haversineNm(originIcao, destinationIcao) {
+  const a = AIRPORTS[originIcao];
+  const b = AIRPORTS[destinationIcao];
+  if (!a || !b) return randomInt(300, 2200);
+  return haversineNmBetweenPoints(a.lat, a.lon, b.lat, b.lon);
+}
+
+function haversineFromCoordsNm(originLat, originLon, destinationLat, destinationLon) {
+  return haversineNmBetweenPoints(originLat, originLon, destinationLat, destinationLon);
 }
 
 function estimateEtaLabel(flight) {
@@ -1282,7 +1274,7 @@ async function createTrackingSession(trackingSource) {
   const callsignRaw = latestSimbriefPlan?.general
     ? `${latestSimbriefPlan.general.icao_airline || ''}${latestSimbriefPlan.general.flight_number || ''}`
     : fallbackCallsign;
-  const callsign = callsignRaw.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, 12) || fallbackCallsign;
+  const callsign = callsignRaw.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, MAX_CALLSIGN_LENGTH) || fallbackCallsign;
 
   const { data: existingTracking } = await supabaseClient
     .from('flight_tracking')
