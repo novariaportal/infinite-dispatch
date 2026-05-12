@@ -178,6 +178,30 @@ The tracker validates completion (destination proximity + landing profile) befor
 
 ---
 
+## 🛫 AirLabs Airline Routes Integration (Supabase Edge Function)
+
+The app now uses a backend Edge Function for route schedules so API keys stay server-side.
+
+### 1) Create the Edge Function
+1. Open **Supabase Dashboard → Edge Functions**.
+2. Click **Create a new function**.
+3. Name it: `airlabs-routes`.
+4. Replace the code with:
+   `supabase/functions/airlabs-routes/index.ts` from this repo.
+5. Click **Deploy**.
+
+### 2) Add Secrets
+In **Project Settings → Secrets** or **Vault**, add:
+- `AIRLABS_API_KEY` = your AirLabs API key
+
+### 3) Security Requirement
+- Do **not** place AirLabs keys in frontend files.
+- If any AirLabs key was ever exposed publicly, rotate it immediately in AirLabs dashboard and update only `AIRLABS_API_KEY` in Supabase secrets.
+
+The frontend will call this function for route candidates and automatically falls back to curated local routes if no usable AirLabs routes are returned.
+
+---
+
 ## 📘 User Guide
 
 Open `public/user-guide.html` or use the in-app link to view the guide.
