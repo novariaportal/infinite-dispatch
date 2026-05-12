@@ -128,6 +128,9 @@ window.SUPABASE_URL = "YOUR_SUPABASE_URL";
 window.SUPABASE_PUBLISHABLE_KEY = "YOUR_SUPABASE_PUBLISHABLE_KEY";
 ```
 
+⚠️ Never expose `SUPABASE_SERVICE_ROLE_KEY` in frontend/admin pages.  
+Keep it only in server-side secrets (e.g., Supabase Edge Function secrets) and use server endpoints for privileged actions.
+
 ---
 
 ## 🛠️ Local Setup
@@ -170,6 +173,8 @@ In **Edge Functions → if-tracker → Schedule**, set:
 */2 * * * *
 ```
 (Every 2 minutes)
+
+The tracker validates completion (destination proximity + landing profile) before marking a flight completed and awarding pay/hours.
 
 ---
 
