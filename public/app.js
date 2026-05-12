@@ -522,68 +522,28 @@ async function refreshDerivedProfile(profile) {
   return data;
 }
 
-function setAuthButtonLoading(isLoading) {
-  const btn = document.querySelector('button[onclick="login()"]');
+function setAuthButtonLoading(buttonId, isLoading, loadingText, idleText) {
+  const btn = document.getElementById(buttonId);
   if (!btn) return;
   btn.disabled = isLoading;
-  btn.innerText = isLoading ? 'Processing...' : 'Login / Register';
+  btn.innerText = isLoading ? loadingText : idleText;
 }
 
 async function login() {
-  const email = document.getElementById('email').value?.trim();
-  const password = document.getElementById('password').value;
-  const baseAirport = document.getElementById('baseAirport')?.value;
+  const email = document.getElementById('loginEmail')?.value?.trim();
+  const password = document.getElementById('loginPassword')?.value;
 
   if (!email || !password) return alert('Enter email and password');
 
   try {
-    setAuthButtonLoading(true);
+    setAuthButtonLoading('loginBtn', true, 'Logging in...', 'Login');
 
-    let { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
-
-    if (error) {
-      const msg = (error.message || '').toLowerCase();
-
-      if (msg.includes('invalid login credentials') || msg.includes('invalid credentials')) {
-        alert('Invalid email or password. If you already registered, use the same password.');
-        return;
-      }
-
-      if (msg.includes('rate limit') || msg.includes('too many')) {
-        alert(error.message);
-        return;
-      }
-
-      if (!baseAirport || baseAirport.trim().length < 4) {
-        return alert('Enter a Base Airport ICAO code (e.g., WSSS) to register.');
-      }
-
-      const signUpResult = await supabaseClient.auth.signUp({ email, password });
-      if (signUpResult.error) {
-        alert(signUpResult.error.message);
-        return;
-      }
-
-      const user = signUpResult.data.user;
-      if (!user) {
-        alert('Registration created. Please check your email to confirm your account, then log in.');
-        return;
-      }
-
-      await createProfile(user, baseAirport);
-
-      const loginResult = await supabaseClient.auth.signInWithPassword({ email, password });
-      if (loginResult.error) {
-        alert(loginResult.error.message);
-        return;
-      }
-
-      data = loginResult.data;
-    }
+    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    if (error) return alert(error.message);
 
     if (data?.user) {
       currentUser = data.user;
-      const profile = await ensureProfile(data.user, baseAirport);
+      const profile = await ensureProfile(data.user);
       currentProfile = await refreshDerivedProfile(profile);
       await initializeDashboard();
     }
@@ -591,7 +551,46 @@ async function login() {
     console.error('Login error:', err);
     alert(err?.message || String(err));
   } finally {
-    setAuthButtonLoading(false);
+    setAuthButtonLoading('loginBtn', false, 'Logging in...', 'Login');
+  }
+}
+
+async function registerAccount() {
+  const email = document.getElementById('registerEmail')?.value?.trim();
+  const password = document.getElementById('registerPassword')?.value;
+  const baseAirport = document.getElementById('registerBaseAirport')?.value;
+
+  if (!email || !password) return alert('Enter email and password');
+  if (!baseAirport || baseAirport.trim().length < 4) {
+    return alert('Enter a Base Airport ICAO code (e.g., WSSS) to register.');
+  }
+
+  try {
+    setAuthButtonLoading('registerBtn', true, 'Registering...', 'Register');
+    const signUpResult = await supabaseClient.auth.signUp({ email, password });
+    if (signUpResult.error) return alert(signUpResult.error.message);
+
+    const user = signUpResult.data.user;
+    if (!user) {
+      alert('Registration created. Please check your email to confirm your account, then log in.');
+      return;
+    }
+
+    await createProfile(user, baseAirport);
+    const loginResult = await supabaseClient.auth.signInWithPassword({ email, password });
+    if (loginResult.error) {
+      alert(loginResult.error.message);
+      return;
+    }
+
+    currentUser = loginResult.data.user;
+    currentProfile = await refreshDerivedProfile(await ensureProfile(currentUser, baseAirport));
+    await initializeDashboard();
+  } catch (err) {
+    console.error('Register error:', err);
+    alert(err?.message || String(err));
+  } finally {
+    setAuthButtonLoading('registerBtn', false, 'Registering...', 'Register');
   }
 }
 
@@ -1401,6 +1400,7 @@ window.onThemeChange = onThemeChange;
 window.onGlassToggle = onGlassToggle;
 window.showPage = showPage;
 window.login = login;
+window.registerAccount = registerAccount;
 window.logout = logout;
 window.toggleReset = toggleReset;
 window.resetPassword = resetPassword;
