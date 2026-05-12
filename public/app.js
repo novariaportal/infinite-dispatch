@@ -696,7 +696,7 @@ function getTypeRatingMultiplier(aircraftName) {
 }
 
 function isPassengerAircraft(name = '') {
-  return !/^(a-10)$|freighter|cargo|\b777f\b|\ba330-200f\b/i.test(name);
+  return !/^a-10$|freighter|cargo|\b777f\b|\ba330-200f\b/i.test(name);
 }
 
 async function loadAircraftCatalog() {
@@ -747,8 +747,8 @@ function weightedAircraftPick(models) {
 
 function randomDistanceForAircraft(aircraftName) {
   const range = getAircraftRangeNm(aircraftName);
-  const maxDistance = Math.max(350, Math.floor(range * 0.82));
-  const minDistance = Math.min(500, Math.max(120, Math.floor(range * 0.12)));
+  const maxDistance = Math.max(180, Math.floor(range * 0.82));
+  const minDistance = Math.min(maxDistance, Math.max(120, Math.floor(range * 0.12)));
   return randomInt(minDistance, maxDistance);
 }
 
