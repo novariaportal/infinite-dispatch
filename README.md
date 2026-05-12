@@ -24,6 +24,7 @@ Job slots are fixed by total hours:
 
 ### 3. Base Airport Lock
 Your base airport is chosen at signup and **cannot be changed**.
+Your employer is automatically aligned to that base, and generated jobs stay within that airline's network.
 
 ---
 
