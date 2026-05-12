@@ -47,13 +47,10 @@ function buildSelectOptions(options, selectedValue) {
 }
 
 function getEmployerOptions(profile) {
-  const combined = ['', ...DEFAULT_EMPLOYER_OPTIONS, profile.employer].filter((value) => value != null);
-  const deduped = [...new Set(combined)];
-  return deduped.sort((a, b) => {
-    if (a === '') return -1;
-    if (b === '') return 1;
-    return a.localeCompare(b);
-  });
+  const combined = [...DEFAULT_EMPLOYER_OPTIONS];
+  if (profile.employer != null && profile.employer !== '') combined.push(profile.employer);
+  const dedupedNonEmpty = [...new Set(combined)].sort((a, b) => a.localeCompare(b));
+  return ['', ...dedupedNonEmpty];
 }
 
 function getLicenseOptions(profile) {
@@ -119,20 +116,42 @@ async function loadProfiles() {
   const container = document.getElementById('profilesContainer');
   const filterId = document.getElementById('profileIdSearch').value.trim();
   container.innerHTML = '';
-
-  let query = supabaseClient
-    .from('profiles')
-    .select('id, username, hours, job_slots, license, position, pay_multiplier, type_ratings, balance, employer, base_airport')
-    .order('created_at', { ascending: false });
+  const selectFields = 'id, username, hours, job_slots, license, position, pay_multiplier, type_ratings, balance, employer, base_airport';
+  let data = [];
 
   if (filterId) {
-    query = query.eq('id', filterId);
-  }
+    const { data: filteredData, error } = await supabaseClient
+      .from('profiles')
+      .select(selectFields)
+      .eq('id', filterId)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if (error) {
+      container.innerHTML = `<div class="list-item muted">${error.message}</div>`;
+      return;
+    }
+    data = filteredData || [];
+  } else {
+    const pageSize = 200;
+    let from = 0;
 
-  const { data, error } = await query;
-  if (error) {
-    container.innerHTML = `<div class="list-item muted">${error.message}</div>`;
-    return;
+    while (true) {
+      const { data: chunk, error } = await supabaseClient
+        .from('profiles')
+        .select(selectFields)
+        .order('created_at', { ascending: false })
+        .range(from, from + pageSize - 1);
+
+      if (error) {
+        container.innerHTML = `<div class="list-item muted">${error.message}</div>`;
+        return;
+      }
+
+      if (!chunk?.length) break;
+      data.push(...chunk);
+      if (chunk.length < pageSize) break;
+      from += pageSize;
+    }
   }
 
   if (!data || data.length === 0) {
