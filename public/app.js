@@ -280,9 +280,9 @@ function shuffleArray(input = []) {
   const list = input.slice();
   for (let i = list.length - 1; i > 0; i -= 1) {
     const j = randomInt(0, i);
-    const temp = list[i];
+    const swappedValue = list[i];
     list[i] = list[j];
-    list[j] = temp;
+    list[j] = swappedValue;
   }
   return list;
 }
@@ -481,7 +481,7 @@ async function buildAirlabsDispatchLegs(base, airline, aircraftName, seedLeg = n
     maxRangeNm
   });
   if (directReturnCandidates.length) {
-    return [firstLeg, directReturnCandidates[0]];
+    return [firstLeg, pickRandom(directReturnCandidates)];
   }
 
   const secondLegCandidates = await fetchAirlabsCandidateLegs({
@@ -501,7 +501,7 @@ async function buildAirlabsDispatchLegs(base, airline, aircraftName, seedLeg = n
       maxRangeNm
     });
     if (finalLegCandidates.length) {
-      return [firstLeg, secondLeg, finalLegCandidates[0]];
+      return [firstLeg, secondLeg, pickRandom(finalLegCandidates)];
     }
   }
 
@@ -1293,9 +1293,11 @@ function renderGeneratedDispatch(routePlan) {
     .join('\n');
 
   const totalPay = Math.round(routePlan.legs.reduce((sum, l) => sum + l.pay, 0));
-  let sourceLabel = 'Unknown route source';
-  if (routePlan.routeSource === 'airlabs') sourceLabel = 'AirLabs schedule data';
-  else if (routePlan.routeSource === 'curated') sourceLabel = 'Curated fallback';
+  const sourceLabel = routePlan.routeSource === 'airlabs'
+    ? 'AirLabs schedule data'
+    : routePlan.routeSource === 'curated'
+      ? 'Curated fallback'
+      : 'Unknown route source';
 
   document.getElementById('dispatchResult').innerText =
     `${routePlan.airline} | ${routePlan.aircraft}\n` +
