@@ -940,10 +940,6 @@ function haversineNm(originIcao, destinationIcao) {
   return haversineNmBetweenPoints(a.lat, a.lon, b.lat, b.lon);
 }
 
-function haversineFromCoordsNm(originLat, originLon, destinationLat, destinationLon) {
-  return haversineNmBetweenPoints(originLat, originLon, destinationLat, destinationLon);
-}
-
 function estimateEtaLabel(flight) {
   if (!flight?.destination || flight.status !== 'enroute') return '—';
   if (
@@ -958,7 +954,7 @@ function estimateEtaLabel(flight) {
   const destination = AIRPORTS[flight.destination];
   if (!destination) return 'Unavailable';
 
-  const remainingNm = haversineFromCoordsNm(flight.last_lat, flight.last_lng, destination.lat, destination.lon);
+  const remainingNm = haversineNmBetweenPoints(flight.last_lat, flight.last_lng, destination.lat, destination.lon);
   const etaMinutes = Math.round((remainingNm / flight.last_speed) * 60);
   if (!Number.isFinite(etaMinutes) || etaMinutes <= 0) return '<1m';
   if (etaMinutes >= 60) {
@@ -1277,9 +1273,10 @@ async function createTrackingSession(trackingSource) {
     ? `${source.airline.replace(/[^A-Z]/gi, '').slice(0, 3).toUpperCase()}${randomInt(100, 999)}`
     : 'DISPATCH1';
 
-  const callsignRaw = latestSimbriefPlan?.general
-    ? `${latestSimbriefPlan.general.icao_airline || ''}${latestSimbriefPlan.general.flight_number || ''}`
-    : fallbackCallsign;
+  const simbriefCallsign = latestSimbriefPlan?.general
+    ? `${latestSimbriefPlan.general.icao_airline || ''}${latestSimbriefPlan.general.flight_number || ''}`.trim()
+    : '';
+  const callsignRaw = simbriefCallsign || fallbackCallsign;
   const callsign = callsignRaw.replace(/[^A-Z0-9]/gi, '').toUpperCase().slice(0, MAX_CALLSIGN_LENGTH) || fallbackCallsign;
 
   const { data: existingTracking } = await supabaseClient
@@ -1400,8 +1397,9 @@ async function loadTrackingHistory() {
     const item = document.createElement('li');
     const route = [flight.origin, flight.destination].filter(Boolean).join(' -> ');
     const server = (flight.server_type || 'casual').toUpperCase();
-    const status = String(flight.status || 'enroute').toLowerCase();
-    const statusLabel = status.toUpperCase();
+    const statusRaw = String(flight.status || 'enroute');
+    const status = statusRaw.toLowerCase();
+    const statusLabel = statusRaw.toUpperCase();
     const created = flight.created_at ? new Date(flight.created_at).toLocaleString() : '';
     const etaLabel = estimateEtaLabel({ ...flight, status });
 

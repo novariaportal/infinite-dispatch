@@ -211,7 +211,7 @@ serve(async () => {
       const origin = String(tracking.origin || "").trim().toUpperCase();
       const destination = String(tracking.destination || "").trim().toUpperCase();
 
-      let distanceNm = distanceRemainingNm ?? 0;
+      let distanceNm = 0;
       if (origin && destination) {
         const originAirport = AIRPORT_COORDS[origin];
         const destinationAirport = AIRPORT_COORDS[destination];
