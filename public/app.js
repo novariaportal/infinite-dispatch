@@ -647,7 +647,7 @@ function renderDashboard(profile) {
 function restoreLiveryCache() {
   try {
     const parsed = JSON.parse(localStorage.getItem(LIVERY_CACHE_KEY) || '{}');
-    if (!parsed || typeof parsed !== 'object') {
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
       liveryCache = {};
       return;
     }

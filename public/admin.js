@@ -47,9 +47,13 @@ function buildSelectOptions(options, selectedValue) {
 }
 
 function getEmployerOptions(profile) {
-  const combined = [...DEFAULT_EMPLOYER_OPTIONS, profile.employer].filter(Boolean);
+  const combined = ['', ...DEFAULT_EMPLOYER_OPTIONS, profile.employer].filter((value) => value != null);
   const deduped = [...new Set(combined)];
-  return deduped.sort((a, b) => a.localeCompare(b));
+  return deduped.sort((a, b) => {
+    if (a === '') return -1;
+    if (b === '') return 1;
+    return a.localeCompare(b);
+  });
 }
 
 function getLicenseOptions(profile) {
@@ -107,7 +111,7 @@ async function unlockAdmin() {
 
   document.getElementById('adminGate').style.display = 'none';
   document.getElementById('adminPanel').style.display = 'block';
-  document.getElementById('adminStatus').innerText = 'Admin unlocked. Showing users.';
+  document.getElementById('adminStatus').innerText = 'Admin unlocked, showing users.';
   await loadProfiles();
 }
 
