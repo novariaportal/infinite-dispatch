@@ -22,6 +22,10 @@ function profileCard(profile) {
     <input id="slots_${profile.id}" type="number" value="${profile.job_slots ?? 0}">
     <label>License(s)</label>
     <input id="license_${profile.id}" type="text" value="${profile.license || ''}">
+    <label>Position</label>
+    <input id="position_${profile.id}" type="text" value="${profile.position || ''}">
+    <label>Pay Multiplier</label>
+    <input id="multiplier_${profile.id}" type="number" step="0.1" value="${profile.pay_multiplier ?? 1}">
     <label>Type Ratings (comma separated)</label>
     <input id="ratings_${profile.id}" type="text" value="${(profile.type_ratings || []).join(', ')}">
     <label>Money / Balance</label>
@@ -61,7 +65,7 @@ async function loadProfiles() {
 
   let query = supabaseClient
     .from('profiles')
-    .select('id, username, hours, job_slots, license, type_ratings, balance, employer, base_airport')
+    .select('id, username, hours, job_slots, license, position, pay_multiplier, type_ratings, balance, employer, base_airport')
     .order('created_at', { ascending: false })
     .limit(50);
 
@@ -88,6 +92,8 @@ async function saveProfile(profileId) {
     hours: Number(document.getElementById(`hours_${profileId}`).value || 0),
     job_slots: Number(document.getElementById(`slots_${profileId}`).value || 0),
     license: (document.getElementById(`license_${profileId}`).value || '').trim(),
+    position: (document.getElementById(`position_${profileId}`).value || '').trim(),
+    pay_multiplier: Number(document.getElementById(`multiplier_${profileId}`).value || 1),
     type_ratings: formatRatings(document.getElementById(`ratings_${profileId}`).value),
     balance: Number(document.getElementById(`balance_${profileId}`).value || 0),
     employer: (document.getElementById(`employer_${profileId}`).value || '').trim(),
