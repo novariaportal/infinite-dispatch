@@ -54,6 +54,18 @@ body.glass-mode {
   align-items: center;
 }
 
+.header-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.header-nav label {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
 h1, h2, h3 {
   margin: 0;
   font-weight: 600;
@@ -133,6 +145,41 @@ body.glass-mode .nav-btn {
   margin: 30px auto;
 }
 
+.header-btn {
+  width: auto;
+  margin: 0;
+}
+
+.link-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 11px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.link-btn:hover {
+  text-decoration: none;
+  border-color: var(--accent);
+}
+
+.header-nav select {
+  width: auto;
+  margin: 0;
+  min-width: 106px;
+}
+
+.header-checkbox {
+  margin-top: 0;
+  font-size: 0.9rem;
+}
+
 .header-nav a,
 .forgot-link a {
   color: var(--accent);
@@ -180,6 +227,36 @@ button.success {
 
 button.danger {
   background: var(--danger);
+}
+
+.landing-hero {
+  max-width: 980px;
+  margin: 20px auto 16px;
+}
+
+.landing-hero h2 {
+  margin-bottom: 10px;
+}
+
+.landing-cta {
+  margin-top: 14px;
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.landing-cta button,
+.landing-cta .link-btn {
+  width: auto;
+  margin: 0;
+}
+
+.landing-grid {
+  max-width: 980px;
+  margin: 0 auto;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(240px, 1fr));
 }
 
 .app-shell {
@@ -369,6 +446,10 @@ pre {
     grid-template-columns: 1fr;
   }
 
+  .landing-grid {
+    grid-template-columns: 1fr;
+  }
+
   .sidebar {
     position: static;
   }
@@ -389,6 +470,20 @@ pre {
     flex-direction: column;
     align-items: flex-start;
     padding: 14px;
+  }
+
+  .header-nav {
+    width: 100%;
+  }
+
+  .header-nav .header-btn,
+  .header-nav .link-btn,
+  .header-nav select {
+    width: 100%;
+  }
+
+  .header-checkbox {
+    width: 100%;
   }
 
   main {

@@ -14,12 +14,54 @@
         <div id="userInfo">Not logged in</div>
       </div>
       <nav class="header-nav">
-        <a href="user-guide.html">User Guide</a>
+        <button class="header-btn" onclick="openAuth()">Login / Sign-Up</button>
+        <a class="header-btn link-btn" href="user-guide.html">User Guide</a>
+        <label for="headerThemeSelect">Theme</label>
+        <select id="headerThemeSelect" onchange="onThemeChangeFromHeader()">
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+        <label class="checkbox-row header-checkbox" for="headerGlassToggle">
+          <input type="checkbox" id="headerGlassToggle" onchange="onGlassToggleFromHeader()">
+          Liquid glass
+        </label>
       </nav>
     </header>
 
     <main>
-      <section id="authSection">
+      <section id="landingSection">
+        <div class="card landing-hero">
+          <h2>Dispatch your career in Infinite Flight</h2>
+          <p class="muted">
+            Build your pilot profile, pick up route assignments, generate dispatch plans, and track your completed flights in one place.
+          </p>
+          <div class="landing-cta">
+            <button onclick="openAuth()">Login / Sign-Up</button>
+            <a class="header-btn link-btn" href="user-guide.html">Open User Guide</a>
+          </div>
+        </div>
+
+        <div class="landing-grid">
+          <article class="card">
+            <h3>Career progression</h3>
+            <p class="muted">Start as a new pilot, build hours, unlock licenses, and increase your earning multiplier.</p>
+          </article>
+          <article class="card">
+            <h3>Dynamic job market</h3>
+            <p class="muted">Browse rotating airline jobs from your base and choose the flights that match your aircraft ratings.</p>
+          </article>
+          <article class="card">
+            <h3>Flight planning and tracking</h3>
+            <p class="muted">Generate dispatches, optionally import SimBrief, and monitor your Infinite Flight history with route and status details.</p>
+          </article>
+          <article class="card">
+            <h3>Personalized experience</h3>
+            <p class="muted">Switch between light and dark mode, and enable liquid glass styling anytime from the top bar.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="authSection" style="display: none;">
         <div class="auth-split">
           <div class="card auth-card">
             <h2>Login</h2>
