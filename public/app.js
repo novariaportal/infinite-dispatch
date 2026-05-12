@@ -9,13 +9,30 @@ const supabaseClient = window.supabase.createClient(supabaseUrl, supabasePublish
 
 const THEME_KEY = 'infinite_dispatch_theme';
 const GLASS_KEY = 'infinite_dispatch_glass';
-const LIVERY_CACHE_KEY = 'infinite_dispatch_livery_cache_v1';
+const LIVERY_CACHE_KEY = 'infinite_dispatch_livery_cache_v2';
 
 const LIVERY_API_KEY = 'tyy8znhl0u5kbbb2vuvdhfetmsil041u';
-const INVALID_LIVERY_PATTERN = /generic|special|factory/i;
+const INVALID_LIVERY_PATTERN = /generic|special|factory|house|prototype|test|demo|demonstrator|delivery/i;
+const MANUFACTURER_PREFIX_PATTERN = /^(airbus|boeing|embraer|bombardier|cessna|cirrus|dassault|beechcraft|textron)\b/i;
 const JOB_WEIGHT_SCALE = 4;
 const BASE_PAY_PER_NM = 14;
 const BASE_TYPE_RATING_PRICE = 7000;
+const LICENSE_LEVELS = ['PPL', 'CPL', 'MPL', 'ATPL'];
+const LICENSE_META = {
+  PPL: { position: 'FO', multiplier: 1.0 },
+  CPL: { position: 'SFO', multiplier: 1.5 },
+  MPL: { position: 'CPT', multiplier: 2.0 },
+  ATPL: { position: 'SR CPT', multiplier: 2.5 }
+};
+const LICENSE_SHOP = [
+  { code: 'PPL', price: 1500, details: 'Entry license for local and short routes.' },
+  { code: 'CPL', price: 7000, details: 'Better compensation and regional command opportunities.' },
+  { code: 'MPL', price: 18000, details: 'Advanced line operations with stronger pay multiplier.' },
+  { code: 'ATPL', price: 42000, details: 'Highest captain tier for top-paying routes.' }
+];
+const AIRCRAFT_DISPLAY_ALIAS = {
+  'Airbus A350': 'Airbus A350-900'
+};
 
 let currentUser = null;
 let currentProfile = null;
@@ -30,6 +47,7 @@ const POPULARITY_MULTIPLIER = {
   'Airbus A320': 1.06,
   'Airbus A321': 1.08,
   'Airbus A350': 1.15,
+  'Airbus A350-900': 1.15,
   'Airbus A380': 1.2,
   'Boeing 737-800': 1.08,
   'Boeing 737-8 MAX': 1.1,
@@ -37,6 +55,41 @@ const POPULARITY_MULTIPLIER = {
   'Boeing 787-9': 1.14,
   'Boeing 787-10': 1.13,
   'Boeing 747-8': 1.14
+};
+
+const AIRCRAFT_RANGE_NM = {
+  'A-10': 2200,
+  'Airbus A220-300': 3400,
+  'Airbus A318': 3100,
+  'Airbus A319': 3700,
+  'Airbus A320': 3300,
+  'Airbus A321': 4000,
+  'Airbus A330-200': 7200,
+  'Airbus A330-200F': 4000,
+  'Airbus A330-300': 6350,
+  'Airbus A330-900': 7200,
+  'Airbus A340-600': 7900,
+  'Airbus A350': 8100,
+  'Airbus A350-900': 8100,
+  'Airbus A380': 8200,
+  'Boeing 717-200': 2000,
+  'Boeing 737-700': 3300,
+  'Boeing 737-8 MAX': 3550,
+  'Boeing 737-800': 3050,
+  'Boeing 737-900': 3200,
+  'Boeing 747-200': 6500,
+  'Boeing 747-400': 7300,
+  'Boeing 747-8': 7700,
+  'Boeing 757-200': 3900,
+  'Boeing 767-300': 5900,
+  'Boeing 777-200ER': 7065,
+  'Boeing 777-200LR': 8555,
+  'Boeing 777-300ER': 7370,
+  'Boeing 777F': 4950,
+  'Boeing 787-10': 6400,
+  'Boeing 787-8': 7355,
+  'Boeing 787-9': 7600,
+  'Bombardier Dash 8-Q400': 1100
 };
 
 const DEFAULT_EMPLOYERS = ['Singapore Airlines', 'Qantas', 'Emirates', 'KLM', 'British Airways', 'United Airlines'];
@@ -62,6 +115,14 @@ const AIRPORTS = {
   EHAM: { name: 'Amsterdam', region: 'EU', lat: 52.31, lon: 4.76 },
   OMDB: { name: 'Dubai', region: 'ME', lat: 25.25, lon: 55.36 },
   OTHH: { name: 'Doha', region: 'ME', lat: 25.27, lon: 51.61 },
+  OJED: { name: 'Jeddah', region: 'ME', lat: 21.68, lon: 39.16 },
+  OERK: { name: 'Riyadh', region: 'ME', lat: 24.96, lon: 46.7 },
+  OMAA: { name: 'Abu Dhabi', region: 'ME', lat: 24.43, lon: 54.65 },
+  LTBA: { name: 'Istanbul Ataturk', region: 'EU', lat: 40.98, lon: 28.82 },
+  EDDF: { name: 'Frankfurt', region: 'EU', lat: 50.03, lon: 8.57 },
+  LFPO: { name: 'Paris Orly', region: 'EU', lat: 48.73, lon: 2.38 },
+  RKSI: { name: 'Seoul Incheon', region: 'NEA', lat: 37.47, lon: 126.45 },
+  RJBB: { name: 'Osaka Kansai', region: 'NEA', lat: 34.43, lon: 135.24 },
   KJFK: { name: 'New York JFK', region: 'NA', lat: 40.64, lon: -73.78 },
   KLAX: { name: 'Los Angeles', region: 'NA', lat: 33.94, lon: -118.4 },
   KSFO: { name: 'San Francisco', region: 'NA', lat: 37.62, lon: -122.38 },
@@ -72,69 +133,102 @@ const AIRPORTS = {
 
 const AIRLINE_ROUTE_PROFILES = {
   Qantas: {
-    outboundByBase: {
+    hubs: ['YSSY', 'YMML', 'YBBN', 'YPPH'],
+    longHaul: ['WSSS', 'NZAA', 'KLAX', 'EGLL'],
+    regional: ['YSSY', 'YMML', 'YBBN', 'YPPH', 'YPAD'],
+    positioningFromBase: {
       WSSS: ['YSSY', 'YMML', 'YBBN', 'YPPH']
-    },
-    outbound: ['YSSY', 'YMML', 'YBBN', 'YPPH', 'NZAA', 'KLAX'],
-    hopsByRegion: {
-      AU: ['YMML', 'YBBN', 'YPAD', 'YPPH', 'YSSY']
     }
   },
   'Singapore Airlines': {
-    outboundByBase: {
-      WSSS: ['EGLL', 'EGKK', 'LFPG', 'RJTT', 'YSSY', 'OMDB', 'WIII', 'VTBS']
-    },
-    outbound: ['RJTT', 'VHHH', 'LFPG', 'OMDB', 'YSSY', 'KJFK'],
-    hopsByRegion: {
-      SEA: ['WIII', 'VTBS', 'WMKK', 'WSSS'],
-      AU: ['YSSY', 'YMML', 'YBBN']
-    }
+    hubs: ['WSSS'],
+    longHaul: ['EGLL', 'LFPG', 'RJTT', 'VHHH', 'KJFK', 'YSSY', 'OMDB', 'RKSI'],
+    regional: ['WIII', 'VTBS', 'WMKK', 'YSSY', 'YMML', 'YBBN']
   },
   Emirates: {
-    outboundByBase: {
-      OMDB: ['EGLL', 'KJFK', 'WSSS', 'YSSY', 'RJTT']
-    },
-    outbound: ['EGLL', 'KJFK', 'WSSS', 'YSSY', 'RJTT', 'LFPG'],
-    hopsByRegion: {
-      EU: ['EGLL', 'LFPG', 'EHAM'],
-      SEA: ['WSSS', 'VTBS', 'WMKK']
-    }
+    hubs: ['OMDB'],
+    longHaul: ['EGLL', 'KJFK', 'WSSS', 'YSSY', 'RJTT', 'LFPG', 'KLAX'],
+    regional: ['OMAA', 'OTHH', 'OERK', 'OJED', 'WSSS', 'VTBS', 'WMKK']
   },
   KLM: {
-    outboundByBase: {
-      EHAM: ['EGLL', 'LFPG', 'KJFK', 'WSSS']
-    },
-    outbound: ['EGLL', 'LFPG', 'KJFK', 'KMIA', 'WSSS'],
-    hopsByRegion: {
-      EU: ['EGLL', 'LFPG', 'EHAM'],
-      NA: ['KJFK', 'KMIA', 'KORD']
-    }
+    hubs: ['EHAM'],
+    longHaul: ['EGLL', 'LFPG', 'KJFK', 'KMIA', 'WSSS', 'KORD'],
+    regional: ['EGLL', 'LFPG', 'EDDF', 'EGKK']
   },
   'British Airways': {
-    outboundByBase: {
-      EGLL: ['KJFK', 'WSSS', 'YSSY', 'LFPG']
-    },
-    outbound: ['KJFK', 'WSSS', 'YSSY', 'LFPG', 'OMDB'],
-    hopsByRegion: {
-      EU: ['LFPG', 'EHAM', 'EGKK'],
-      NA: ['KJFK', 'KORD', 'KMIA']
-    }
+    hubs: ['EGLL', 'EGKK'],
+    longHaul: ['KJFK', 'WSSS', 'YSSY', 'LFPG', 'OMDB', 'KORD', 'KLAX'],
+    regional: ['LFPG', 'EHAM', 'EDDF', 'EGKK']
   },
   'United Airlines': {
-    outbound: ['KJFK', 'KLAX', 'KORD', 'KSFO', 'KSEA', 'EGLL'],
-    hopsByRegion: {
-      NA: ['KJFK', 'KLAX', 'KORD', 'KSFO', 'KSEA', 'KMIA']
-    }
+    hubs: ['KORD', 'KSFO', 'KJFK'],
+    longHaul: ['EGLL', 'LFPG', 'WSSS', 'RJTT', 'KLAX', 'KMIA'],
+    regional: ['KJFK', 'KLAX', 'KORD', 'KSFO', 'KSEA', 'KMIA']
+  },
+  Saudia: {
+    hubs: ['OJED', 'OERK'],
+    longHaul: ['WSSS', 'EGLL', 'LFPG', 'RJTT', 'KJFK'],
+    regional: ['OMDB', 'OTHH', 'OERK', 'OJED', 'OMAA']
+  },
+  'Qatar Airways': {
+    hubs: ['OTHH'],
+    longHaul: ['EGLL', 'KJFK', 'YSSY', 'WSSS', 'RJTT', 'LFPG'],
+    regional: ['OMDB', 'OERK', 'OJED', 'OMAA', 'WSSS']
+  },
+  'Etihad Airways': {
+    hubs: ['OMAA'],
+    longHaul: ['EGLL', 'KJFK', 'YSSY', 'WSSS', 'RJTT', 'LFPG'],
+    regional: ['OMDB', 'OTHH', 'OERK', 'OJED', 'WSSS']
+  },
+  Lufthansa: {
+    hubs: ['EDDF'],
+    longHaul: ['KJFK', 'KORD', 'WSSS', 'RJTT', 'OMDB', 'YSSY'],
+    regional: ['EGLL', 'LFPG', 'EHAM', 'EGKK', 'LTBA']
+  },
+  'Air France': {
+    hubs: ['LFPG', 'LFPO'],
+    longHaul: ['KJFK', 'WSSS', 'RJTT', 'OMDB', 'YSSY'],
+    regional: ['EGLL', 'EHAM', 'EDDF', 'LTBA', 'EGKK']
+  },
+  'Cathay Pacific': {
+    hubs: ['VHHH'],
+    longHaul: ['WSSS', 'YSSY', 'EGLL', 'KJFK', 'RJTT', 'LFPG'],
+    regional: ['RJTT', 'RKSI', 'WSSS', 'VTBS', 'WMKK']
+  },
+  ANA: {
+    hubs: ['RJTT', 'RJAA'],
+    longHaul: ['WSSS', 'YSSY', 'EGLL', 'KJFK', 'VHHH'],
+    regional: ['RJBB', 'RKSI', 'VHHH', 'ZBAA', 'WSSS']
+  },
+  'Japan Airlines': {
+    hubs: ['RJTT', 'RJAA'],
+    longHaul: ['WSSS', 'YSSY', 'EGLL', 'KJFK', 'VHHH'],
+    regional: ['RJBB', 'RKSI', 'VHHH', 'ZBAA', 'WSSS']
+  },
+  'Turkish Airlines': {
+    hubs: ['LTBA'],
+    longHaul: ['EGLL', 'KJFK', 'WSSS', 'OMDB', 'RJTT'],
+    regional: ['EDDF', 'LFPG', 'EHAM', 'OERK', 'OJED']
+  },
+  'Delta Air Lines': {
+    hubs: ['KJFK', 'KLAX'],
+    longHaul: ['EGLL', 'LFPG', 'WSSS', 'RJTT', 'YSSY'],
+    regional: ['KORD', 'KSFO', 'KSEA', 'KMIA', 'KJFK']
+  },
+  'American Airlines': {
+    hubs: ['KJFK', 'KORD'],
+    longHaul: ['EGLL', 'LFPG', 'WSSS', 'RJTT', 'KLAX'],
+    regional: ['KLAX', 'KSEA', 'KMIA', 'KSFO', 'KORD']
   }
 };
 
 const REGION_FALLBACKS = {
-  SEA: ['WIII', 'VTBS', 'WMKK', 'RJTT', 'VHHH', 'YSSY'],
+  SEA: ['WIII', 'VTBS', 'WMKK', 'WSSS', 'VHHH', 'YSSY'],
   AU: ['YSSY', 'YMML', 'YBBN', 'YPAD', 'YPPH'],
-  EU: ['EGLL', 'LFPG', 'EHAM', 'EGKK'],
-  ME: ['OMDB', 'OTHH', 'WSSS', 'EGLL'],
+  EU: ['EGLL', 'LFPG', 'EHAM', 'EGKK', 'EDDF', 'LTBA'],
+  ME: ['OMDB', 'OTHH', 'OJED', 'OERK', 'OMAA', 'WSSS'],
   NA: ['KJFK', 'KLAX', 'KORD', 'KSFO', 'KSEA', 'KMIA'],
-  NEA: ['RJTT', 'RJAA', 'VHHH', 'ZBAA']
+  NEA: ['RJTT', 'RJAA', 'VHHH', 'ZBAA', 'RKSI', 'RJBB']
 };
 
 function randomInt(min, max) {
@@ -156,6 +250,72 @@ function uniqueStrings(arr) {
   return [...new Set((arr || []).filter(Boolean).map((x) => String(x).trim()))];
 }
 
+function normalizeAirlineName(rawName = '') {
+  let name = String(rawName || '').replace(/\s+/g, ' ').trim();
+  if (!name) return null;
+
+  const lower = name.toLowerCase();
+  if (INVALID_LIVERY_PATTERN.test(lower) || MANUFACTURER_PREFIX_PATTERN.test(lower)) return null;
+
+  name = name
+    .replace(/\b(19|20)\d{2}s?\b/g, '')
+    .replace(/\b(retro|heritage|classic|old livery|vintage)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const aliasMatchers = [
+    [/^british airways/i, 'British Airways'],
+    [/^qantas/i, 'Qantas'],
+    [/^singapore airlines/i, 'Singapore Airlines'],
+    [/^emirates/i, 'Emirates'],
+    [/^klm/i, 'KLM'],
+    [/^united airlines?/i, 'United Airlines'],
+    [/^(saudia|saudi arabian airlines?)/i, 'Saudia'],
+    [/^qatar airways/i, 'Qatar Airways'],
+    [/^etihad airways/i, 'Etihad Airways'],
+    [/^lufthansa/i, 'Lufthansa'],
+    [/^air france/i, 'Air France'],
+    [/^cathay pacific/i, 'Cathay Pacific'],
+    [/^(ana|all nippon airways)/i, 'ANA'],
+    [/^japan airlines/i, 'Japan Airlines'],
+    [/^turkish airlines/i, 'Turkish Airlines'],
+    [/^delta air lines?/i, 'Delta Air Lines'],
+    [/^american airlines?/i, 'American Airlines']
+  ];
+
+  for (const [pattern, canonical] of aliasMatchers) {
+    if (pattern.test(name)) return canonical;
+  }
+
+  return AIRLINE_ROUTE_PROFILES[name] ? name : null;
+}
+
+function getAircraftDisplayName(aircraftName = '') {
+  return AIRCRAFT_DISPLAY_ALIAS[aircraftName] || aircraftName;
+}
+
+function getAircraftRangeNm(aircraftName = '') {
+  const displayName = getAircraftDisplayName(aircraftName);
+  if (AIRCRAFT_RANGE_NM[displayName]) return AIRCRAFT_RANGE_NM[displayName];
+  if (AIRCRAFT_RANGE_NM[aircraftName]) return AIRCRAFT_RANGE_NM[aircraftName];
+
+  const size = getAircraftSizeClass(aircraftName);
+  if (size === 'wide') return 7000;
+  if (size === 'mid') return 5000;
+  if (size === 'narrow') return 3200;
+  return 1200;
+}
+
+function licenseStateFor(licenseCode = 'PPL') {
+  return LICENSE_META[licenseCode] || LICENSE_META.PPL;
+}
+
+function highestLicense(currentCode, requiredCode) {
+  const currentIdx = Math.max(0, LICENSE_LEVELS.indexOf(currentCode));
+  const requiredIdx = Math.max(0, LICENSE_LEVELS.indexOf(requiredCode));
+  return LICENSE_LEVELS[Math.max(currentIdx, requiredIdx)] || 'PPL';
+}
+
 function getJobSlotCount(totalHours) {
   if (totalHours < 150) return 2;
   if (totalHours < 350) return 4;
@@ -166,10 +326,10 @@ function getJobSlotCount(totalHours) {
 }
 
 function getProgression(totalHours) {
-  if (totalHours < 150) return { license: 'PPL', position: 'FO', multiplier: 1.0 };
-  if (totalHours < 350) return { license: 'CPL', position: 'SFO', multiplier: 1.5 };
-  if (totalHours < 550) return { license: 'MPL', position: 'CPT', multiplier: 2.0 };
-  return { license: 'ATPL', position: 'SR CPT', multiplier: 2.5 };
+  if (totalHours < 150) return { license: 'PPL', ...licenseStateFor('PPL') };
+  if (totalHours < 350) return { license: 'CPL', ...licenseStateFor('CPL') };
+  if (totalHours < 550) return { license: 'MPL', ...licenseStateFor('MPL') };
+  return { license: 'ATPL', ...licenseStateFor('ATPL') };
 }
 
 function getHashParams() {
@@ -336,10 +496,12 @@ async function ensureProfile(user, baseAirportMaybe) {
 async function refreshDerivedProfile(profile) {
   const prog = getProgression(profile.hours || 0);
   const jobSlots = getJobSlotCount(profile.hours || 0);
+  const effectiveLicense = highestLicense(profile.license, prog.license);
+  const effectiveState = licenseStateFor(effectiveLicense);
   const updates = {};
-  if (profile.license !== prog.license) updates.license = prog.license;
-  if (profile.position !== prog.position) updates.position = prog.position;
-  if (Number(profile.pay_multiplier) !== prog.multiplier) updates.pay_multiplier = prog.multiplier;
+  if (profile.license !== effectiveLicense) updates.license = effectiveLicense;
+  if (profile.position !== effectiveState.position) updates.position = effectiveState.position;
+  if (Number(profile.pay_multiplier) !== effectiveState.multiplier) updates.pay_multiplier = effectiveState.multiplier;
   if (profile.job_slots !== jobSlots) updates.job_slots = jobSlots;
 
   if (Object.keys(updates).length === 0) return profile;
@@ -534,7 +696,7 @@ function getTypeRatingMultiplier(aircraftName) {
 }
 
 function isPassengerAircraft(name = '') {
-  return !/(freighter|cargo|\b777f\b|\ba330-200f\b)/i.test(name);
+  return !/^a-10$|freighter|cargo|\b777f\b|\ba330-200f\b/i.test(name);
 }
 
 async function loadAircraftCatalog() {
@@ -546,7 +708,7 @@ async function loadAircraftCatalog() {
 
   passengerAircraftCatalog = models
     .filter((m) => m?.id && m?.name && isPassengerAircraft(m.name))
-    .map((m) => ({ id: m.id, name: m.name }));
+    .map((m) => ({ id: m.id, name: m.name, displayName: getAircraftDisplayName(m.name) }));
 
   return passengerAircraftCatalog;
 }
@@ -561,8 +723,8 @@ async function fetchAircraftOperators(aircraftId) {
 
     const operators = uniqueStrings(
       liveries
-        .map((l) => l?.name || l?.liveryName || l?.airlineName)
-        .filter((name) => name && !INVALID_LIVERY_PATTERN.test(name))
+        .map((l) => normalizeAirlineName(l?.name || l?.liveryName || l?.airlineName))
+        .filter((name) => name && AIRLINE_ROUTE_PROFILES[name])
     );
 
     liveryCache[aircraftId] = operators;
@@ -584,18 +746,18 @@ function weightedAircraftPick(models) {
 }
 
 function randomDistanceForAircraft(aircraftName) {
-  const size = getAircraftSizeClass(aircraftName);
-  if (size === 'wide') return randomInt(1400, 7400);
-  if (size === 'mid') return randomInt(900, 5200);
-  if (size === 'narrow') return randomInt(350, 3200);
-  return randomInt(140, 1200);
+  const range = getAircraftRangeNm(aircraftName);
+  const maxDistance = Math.max(180, Math.floor(range * 0.82));
+  const minDistance = Math.min(maxDistance, Math.max(120, Math.floor(range * 0.12)));
+  return randomInt(minDistance, maxDistance);
 }
 
 function calculateJobPay(distanceNm, aircraftName) {
-  const sizeClass = getAircraftSizeClass(aircraftName);
+  const displayName = getAircraftDisplayName(aircraftName);
+  const sizeClass = getAircraftSizeClass(displayName);
   const sizeMult = getSizeMultiplier(sizeClass);
-  const popularityMult = getPopularityMultiplier(aircraftName);
-  const typeRatingMult = getTypeRatingMultiplier(aircraftName);
+  const popularityMult = getPopularityMultiplier(displayName);
+  const typeRatingMult = getTypeRatingMultiplier(displayName);
   const pilotMult = Number(currentProfile?.pay_multiplier || 1);
 
   const pay = distanceNm * BASE_PAY_PER_NM * sizeMult * popularityMult * typeRatingMult * pilotMult;
@@ -604,6 +766,7 @@ function calculateJobPay(distanceNm, aircraftName) {
 
 async function generatePassengerJob(index) {
   const models = await loadAircraftCatalog();
+  const base = (currentProfile?.base_airport || 'WSSS').toUpperCase();
 
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const aircraft = weightedAircraftPick(models);
@@ -613,6 +776,11 @@ async function generatePassengerJob(index) {
     if (!operators.length) continue;
 
     const airline = pickRandom(operators);
+    if (!airline) continue;
+
+    const previewLegs = buildCuratedRoute(base, airline, aircraft.displayName || aircraft.name);
+    if (previewLegs.length < 2 || previewLegs.length > 3) continue;
+
     const distanceNm = randomDistanceForAircraft(aircraft.name);
     const pay = calculateJobPay(distanceNm, aircraft.name);
 
@@ -620,7 +788,7 @@ async function generatePassengerJob(index) {
       id: `${Date.now()}_${index}_${attempt}`,
       airline,
       aircraftId: aircraft.id,
-      aircraft: aircraft.name,
+      aircraft: aircraft.displayName || aircraft.name,
       distanceNm,
       pay,
       passengerService: true
@@ -733,43 +901,76 @@ function haversineNm(originIcao, destinationIcao) {
   return Math.round(km * 0.539957);
 }
 
-function buildCuratedRoute(base, airline) {
+function routeWithinRange(origin, destination, maxRangeNm) {
+  const distance = haversineNm(origin, destination);
+  return distance > 0 && distance <= Math.floor(maxRangeNm * 0.95);
+}
+
+function pickRangeValidAirport(origins, destinations, maxRangeNm, blocked = []) {
+  const blockedSet = new Set(blocked);
+  const options = uniqueStrings(destinations).filter((icao) => (
+    AIRPORTS[icao] &&
+    !blockedSet.has(icao) &&
+    origins.some((origin) => routeWithinRange(origin, icao, maxRangeNm))
+  ));
+  return pickRandom(options);
+}
+
+function buildCuratedRoute(base, airline, aircraftName) {
   const cleanBase = (base || 'WSSS').toUpperCase();
-  const profile = AIRLINE_ROUTE_PROFILES[airline] || {};
-  const baseRegion = getAirportRegion(cleanBase);
+  const profile = AIRLINE_ROUTE_PROFILES[airline];
+  if (!profile || !AIRPORTS[cleanBase]) return [];
 
-  const leg1Options = uniqueStrings([
-    ...(profile.outboundByBase?.[cleanBase] || []),
-    ...(profile.outbound || []),
-    ...(REGION_FALLBACKS[baseRegion] || [])
-  ]).filter((icao) => icao !== cleanBase && AIRPORTS[icao]);
+  const maxRangeNm = getAircraftRangeNm(aircraftName);
+  const hubs = uniqueStrings(profile.hubs || []);
+  const regional = uniqueStrings(profile.regional || []);
+  const longHaul = uniqueStrings(profile.longHaul || []);
+  const homeBase = hubs.includes(cleanBase);
 
-  const leg1 = pickRandom(leg1Options) || pickRandom(Object.keys(AIRPORTS).filter((k) => k !== cleanBase));
-
-  const leg1Region = getAirportRegion(leg1);
-  const leg2Options = uniqueStrings([
-    ...(profile.hopsByRegion?.[leg1Region] || []),
-    ...(REGION_FALLBACKS[leg1Region] || [])
-  ]).filter((icao) => icao !== cleanBase && icao !== leg1 && AIRPORTS[icao]);
-
-  const leg2 = pickRandom(leg2Options);
-
-  if (!leg1) {
-    return [{ origin: cleanBase, destination: cleanBase }];
+  let leg1 = null;
+  if (!homeBase) {
+    const positioning = uniqueStrings([
+      ...(profile.positioningFromBase?.[cleanBase] || []),
+      ...hubs,
+      ...longHaul
+    ]);
+    leg1 = pickRangeValidAirport([cleanBase], positioning, maxRangeNm, [cleanBase]);
+  } else {
+    leg1 = pickRangeValidAirport([cleanBase], uniqueStrings([...regional, ...longHaul]), maxRangeNm, [cleanBase]);
   }
 
-  if (!leg2) {
+  if (!leg1) return [];
+
+  const leg2Pools = homeBase
+    ? uniqueStrings([...regional, ...hubs, ...longHaul])
+    : uniqueStrings([...regional, ...longHaul, ...hubs]);
+
+  const leg2 = pickRangeValidAirport([leg1], leg2Pools, maxRangeNm, [cleanBase, leg1]);
+  if (leg2 && routeWithinRange(leg2, cleanBase, maxRangeNm)) {
+    return [
+      { origin: cleanBase, destination: leg1 },
+      { origin: leg1, destination: leg2 },
+      { origin: leg2, destination: cleanBase }
+    ];
+  }
+
+  if (routeWithinRange(leg1, cleanBase, maxRangeNm)) {
     return [
       { origin: cleanBase, destination: leg1 },
       { origin: leg1, destination: cleanBase }
     ];
   }
 
-  return [
-    { origin: cleanBase, destination: leg1 },
-    { origin: leg1, destination: leg2 },
-    { origin: leg2, destination: cleanBase }
-  ];
+  const bridge = pickRangeValidAirport([leg1], [...hubs, ...regional], maxRangeNm, [cleanBase, leg1]);
+  if (bridge && routeWithinRange(bridge, cleanBase, maxRangeNm)) {
+    return [
+      { origin: cleanBase, destination: leg1 },
+      { origin: leg1, destination: bridge },
+      { origin: bridge, destination: cleanBase }
+    ];
+  }
+
+  return [];
 }
 
 function renderGeneratedDispatch(routePlan) {
@@ -796,20 +997,26 @@ function generateDispatch() {
   }
 
   const base = (currentProfile.base_airport || 'WSSS').toUpperCase();
-  const legs = buildCuratedRoute(base, acceptedJob.airline);
+  const maxRangeNm = getAircraftRangeNm(acceptedJob.aircraft);
+  const legs = buildCuratedRoute(base, acceptedJob.airline, acceptedJob.aircraft);
   if (legs.length < 2 || legs.length > 3) {
     alert('Unable to generate a valid multi-leg route. Try another job.');
     return;
   }
 
-  const routeLegs = legs.map((leg) => {
+  const routeLegs = [];
+  for (const leg of legs) {
     const distanceNm = haversineNm(leg.origin, leg.destination);
-    return {
+    if (distanceNm > Math.floor(maxRangeNm * 0.95)) {
+      alert('Unable to generate route within aircraft range. Try refreshing jobs.');
+      return;
+    }
+    routeLegs.push({
       ...leg,
       distanceNm,
       pay: calculateJobPay(distanceNm, acceptedJob.aircraft)
-    };
-  });
+    });
+  }
 
   latestGeneratedDispatch = {
     airline: acceptedJob.airline,
@@ -822,14 +1029,16 @@ function generateDispatch() {
 }
 
 function buildShopCatalog() {
-  const list = passengerAircraftCatalog.slice(0, 18);
+  const list = passengerAircraftCatalog.slice();
   return list.map((aircraft) => {
-    const sizeClass = getAircraftSizeClass(aircraft.name);
+    const displayName = aircraft.displayName || aircraft.name;
+    const sizeClass = getAircraftSizeClass(displayName);
     const sizeMult = getSizeMultiplier(sizeClass);
-    const popularity = getPopularityMultiplier(aircraft.name);
+    const popularity = getPopularityMultiplier(displayName);
     const price = Math.round(BASE_TYPE_RATING_PRICE * sizeMult * popularity);
     return {
       ...aircraft,
+      displayName,
       sizeClass,
       popularity,
       price
@@ -839,17 +1048,40 @@ function buildShopCatalog() {
 
 function renderPilotShop() {
   const host = document.getElementById('shopList');
+  const licenseHost = document.getElementById('licenseShopList');
+  const licenseState = document.getElementById('currentLicenseState');
   host.innerHTML = '';
+  if (licenseHost) licenseHost.innerHTML = '';
+  if (licenseState) {
+    const state = licenseStateFor(currentProfile?.license || 'PPL');
+    licenseState.innerText = `Current: ${currentProfile?.license || 'PPL'} (${state.position}) • Pay x${Number(currentProfile?.pay_multiplier || state.multiplier).toFixed(1)}`;
+  }
+
+  if (licenseHost) {
+    LICENSE_SHOP.forEach((license) => {
+      const ownedIdx = LICENSE_LEVELS.indexOf(currentProfile?.license || 'PPL');
+      const targetIdx = LICENSE_LEVELS.indexOf(license.code);
+      const isOwnedOrHigher = targetIdx <= ownedIdx;
+      const card = document.createElement('div');
+      card.className = 'list-item';
+      card.innerHTML = `
+        <div class="list-row"><strong>${license.code}</strong><span>$${license.price.toLocaleString()}</span></div>
+        <div class="list-row muted"><span>${license.details}</span><span>${licenseStateFor(license.code).position} • x${licenseStateFor(license.code).multiplier.toFixed(1)}</span></div>
+        <button ${isOwnedOrHigher ? 'disabled' : ''} onclick="buyLicense('${license.code}')">${isOwnedOrHigher ? 'Owned' : 'Purchase License'}</button>
+      `;
+      licenseHost.appendChild(card);
+    });
+  }
 
   const catalog = buildShopCatalog();
   const owned = (currentProfile?.type_ratings || []).map((x) => x.toLowerCase());
 
   catalog.forEach((item) => {
-    const hasRating = owned.includes(item.name.toLowerCase());
+    const hasRating = owned.includes(item.displayName.toLowerCase());
     const card = document.createElement('div');
     card.className = 'list-item';
     card.innerHTML = `
-      <div class="list-row"><strong>${item.name}</strong><span>$${item.price.toLocaleString()}</span></div>
+      <div class="list-row"><strong>${item.displayName}</strong><span>$${item.price.toLocaleString()}</span></div>
       <div class="list-row muted"><span>Size: ${item.sizeClass}</span><span>Popularity: x${item.popularity.toFixed(2)}</span></div>
       <button ${hasRating ? 'disabled' : ''} onclick="buyTypeRating('${item.id}')">${hasRating ? 'Owned' : 'Purchase Type Rating'}</button>
     `;
@@ -857,29 +1089,30 @@ function renderPilotShop() {
   });
 }
 
-async function buyTypeRating(aircraftId) {
-  if (!currentProfile) return;
+async function buyLicense(licenseCode) {
+  if (!currentProfile || !LICENSE_META[licenseCode]) return;
 
-  const aircraft = passengerAircraftCatalog.find((a) => a.id === aircraftId);
-  if (!aircraft) return;
+  const selected = LICENSE_SHOP.find((l) => l.code === licenseCode);
+  if (!selected) return;
 
-  const sizeClass = getAircraftSizeClass(aircraft.name);
-  const price = Math.round(BASE_TYPE_RATING_PRICE * getSizeMultiplier(sizeClass) * getPopularityMultiplier(aircraft.name));
-
-  const currentRatings = uniqueStrings(currentProfile.type_ratings || []);
-  if (currentRatings.some((r) => r.toLowerCase() === aircraft.name.toLowerCase())) {
-    alert('Type rating already owned.');
+  const currentIdx = LICENSE_LEVELS.indexOf(currentProfile.license || 'PPL');
+  const targetIdx = LICENSE_LEVELS.indexOf(licenseCode);
+  if (targetIdx <= currentIdx) {
+    alert('You already hold this license or higher.');
     return;
   }
 
-  if ((currentProfile.balance || 0) < price) {
+  if ((currentProfile.balance || 0) < selected.price) {
     alert('Insufficient balance.');
     return;
   }
 
+  const state = licenseStateFor(licenseCode);
   const updates = {
-    balance: currentProfile.balance - price,
-    type_ratings: [...currentRatings, aircraft.name]
+    balance: currentProfile.balance - selected.price,
+    license: licenseCode,
+    position: state.position,
+    pay_multiplier: state.multiplier
   };
 
   const { data, error } = await supabaseClient
@@ -898,7 +1131,52 @@ async function buyTypeRating(aircraftId) {
   renderDashboard(currentProfile);
   renderPilotShop();
   await loadJobMarket();
-  alert(`Purchased ${aircraft.name} type rating.`);
+  alert(`Purchased ${licenseCode}.`);
+}
+
+async function buyTypeRating(aircraftId) {
+  if (!currentProfile) return;
+
+  const aircraft = passengerAircraftCatalog.find((a) => a.id === aircraftId);
+  if (!aircraft) return;
+
+  const displayName = aircraft.displayName || aircraft.name;
+  const sizeClass = getAircraftSizeClass(displayName);
+  const price = Math.round(BASE_TYPE_RATING_PRICE * getSizeMultiplier(sizeClass) * getPopularityMultiplier(displayName));
+
+  const currentRatings = uniqueStrings(currentProfile.type_ratings || []);
+  if (currentRatings.some((r) => r.toLowerCase() === displayName.toLowerCase())) {
+    alert('Type rating already owned.');
+    return;
+  }
+
+  if ((currentProfile.balance || 0) < price) {
+    alert('Insufficient balance.');
+    return;
+  }
+
+  const updates = {
+    balance: currentProfile.balance - price,
+    type_ratings: [...currentRatings, displayName]
+  };
+
+  const { data, error } = await supabaseClient
+    .from('profiles')
+    .update(updates)
+    .eq('id', currentProfile.id)
+    .select('*')
+    .single();
+
+  if (error) {
+    alert(error.message);
+    return;
+  }
+
+  currentProfile = data;
+  renderDashboard(currentProfile);
+  renderPilotShop();
+  await loadJobMarket();
+  alert(`Purchased ${displayName} type rating.`);
 }
 
 async function saveSimBriefPlan(plan) {
@@ -1102,4 +1380,5 @@ window.dispatchFlight = dispatchFlight;
 window.loadJobMarket = loadJobMarket;
 window.acceptJob = acceptJob;
 window.generateDispatch = generateDispatch;
+window.buyLicense = buyLicense;
 window.buyTypeRating = buyTypeRating;
