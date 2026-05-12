@@ -347,7 +347,7 @@ function getHashParams() {
 }
 
 function showSection(sectionId) {
-  const ids = ['authSection', 'resetSection', 'recoverySection', 'dashboardSection'];
+  const ids = ['landingSection', 'authSection', 'resetSection', 'recoverySection', 'dashboardSection'];
   ids.forEach((id) => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -370,23 +370,59 @@ function applyAppearanceFromStorage() {
   document.documentElement.setAttribute('data-theme', savedTheme);
   document.body.classList.toggle('glass-mode', glassEnabled);
 
-  const themeSelect = document.getElementById('themeSelect');
-  if (themeSelect) themeSelect.value = savedTheme;
+  ['themeSelect', 'headerThemeSelect'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = savedTheme;
+  });
 
-  const glassToggle = document.getElementById('glassToggle');
-  if (glassToggle) glassToggle.checked = glassEnabled;
+  ['glassToggle', 'headerGlassToggle'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.checked = glassEnabled;
+  });
+}
+
+function setTheme(value) {
+  const themeValue = value === 'dark' ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', themeValue);
+  localStorage.setItem(THEME_KEY, themeValue);
+  ['themeSelect', 'headerThemeSelect'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = themeValue;
+  });
+}
+
+function setGlassMode(enabled) {
+  const isEnabled = !!enabled;
+  document.body.classList.toggle('glass-mode', isEnabled);
+  localStorage.setItem(GLASS_KEY, isEnabled ? '1' : '0');
+  ['glassToggle', 'headerGlassToggle'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.checked = isEnabled;
+  });
 }
 
 function onThemeChange() {
-  const value = document.getElementById('themeSelect')?.value || 'light';
-  document.documentElement.setAttribute('data-theme', value);
-  localStorage.setItem(THEME_KEY, value);
+  setTheme(document.getElementById('themeSelect')?.value || 'light');
+}
+
+function onThemeChangeFromHeader() {
+  setTheme(document.getElementById('headerThemeSelect')?.value || 'light');
 }
 
 function onGlassToggle() {
-  const enabled = !!document.getElementById('glassToggle')?.checked;
-  document.body.classList.toggle('glass-mode', enabled);
-  localStorage.setItem(GLASS_KEY, enabled ? '1' : '0');
+  setGlassMode(!!document.getElementById('glassToggle')?.checked);
+}
+
+function onGlassToggleFromHeader() {
+  setGlassMode(!!document.getElementById('headerGlassToggle')?.checked);
+}
+
+function openAuth() {
+  if (currentUser) {
+    showSection('dashboardSection');
+    return;
+  }
+  showSection('authSection');
 }
 
 async function handleRecoveryRedirectIfPresent() {
@@ -603,7 +639,7 @@ async function logout() {
   acceptedJob = null;
   availableJobs = [];
   document.getElementById('userInfo').innerText = 'Not logged in';
-  showSection('authSection');
+  showSection('landingSection');
 }
 
 function toggleReset() {
@@ -1485,7 +1521,10 @@ window.addEventListener('load', async () => {
 });
 
 window.onThemeChange = onThemeChange;
+window.onThemeChangeFromHeader = onThemeChangeFromHeader;
 window.onGlassToggle = onGlassToggle;
+window.onGlassToggleFromHeader = onGlassToggleFromHeader;
+window.openAuth = openAuth;
 window.showPage = showPage;
 window.login = login;
 window.registerAccount = registerAccount;
