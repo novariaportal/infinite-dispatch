@@ -51,7 +51,7 @@ let availableJobs = [];
 let acceptedJob = null;
 let passengerAircraftCatalog = [];
 let liveryCache = {};
-const airlabsCandidateCache = {};
+let airlabsCandidateCache = {};
 let hasTrackingHistory = false;
 
 const POPULARITY_MULTIPLIER = {
@@ -835,7 +835,7 @@ async function logout() {
   latestGeneratedDispatch = null;
   acceptedJob = null;
   availableJobs = [];
-  Object.keys(airlabsCandidateCache).forEach((key) => delete airlabsCandidateCache[key]);
+  airlabsCandidateCache = {};
   document.getElementById('userInfo').innerText = 'Not logged in';
   showSection('landingSection');
 }
@@ -1293,7 +1293,9 @@ function renderGeneratedDispatch(routePlan) {
     .join('\n');
 
   const totalPay = Math.round(routePlan.legs.reduce((sum, l) => sum + l.pay, 0));
-  const sourceLabel = routePlan.routeSource === 'airlabs' ? 'AirLabs schedule data' : 'Curated fallback';
+  let sourceLabel = 'Unknown route source';
+  if (routePlan.routeSource === 'airlabs') sourceLabel = 'AirLabs schedule data';
+  else if (routePlan.routeSource === 'curated') sourceLabel = 'Curated fallback';
 
   document.getElementById('dispatchResult').innerText =
     `${routePlan.airline} | ${routePlan.aircraft}\n` +
