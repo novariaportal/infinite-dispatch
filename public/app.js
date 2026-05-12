@@ -250,6 +250,11 @@ function uniqueStrings(arr) {
   return [...new Set((arr || []).filter(Boolean).map((x) => String(x).trim()))];
 }
 
+function canonicalizeAirlineName(rawName = '') {
+  const normalized = normalizeAirlineName(rawName);
+  return normalized || String(rawName || '').replace(/\s+/g, ' ').trim() || null;
+}
+
 function normalizeAirlineName(rawName = '') {
   let name = String(rawName || '').replace(/\s+/g, ' ').trim();
   if (!name) return null;
@@ -647,7 +652,19 @@ function renderDashboard(profile) {
 function restoreLiveryCache() {
   try {
     const parsed = JSON.parse(localStorage.getItem(LIVERY_CACHE_KEY) || '{}');
-    liveryCache = parsed && typeof parsed === 'object' ? parsed : {};
+    if (!parsed || typeof parsed !== 'object') {
+      liveryCache = {};
+      return;
+    }
+
+    const sanitizedCache = {};
+    Object.keys(parsed).forEach((aircraftId) => {
+      const canonicalOperators = uniqueStrings((parsed[aircraftId] || []).map((name) => normalizeAirlineName(name)).filter((name) => name && AIRLINE_ROUTE_PROFILES[name]));
+      if (canonicalOperators.length) sanitizedCache[aircraftId] = canonicalOperators;
+    });
+
+    liveryCache = sanitizedCache;
+    persistLiveryCache();
   } catch {
     liveryCache = {};
   }
@@ -714,7 +731,16 @@ async function loadAircraftCatalog() {
 }
 
 async function fetchAircraftOperators(aircraftId) {
-  if (liveryCache[aircraftId]?.length) return liveryCache[aircraftId];
+  if (liveryCache[aircraftId]?.length) {
+    const canonicalOperators = uniqueStrings(
+      liveryCache[aircraftId]
+        .map((name) => normalizeAirlineName(name))
+        .filter((name) => name && AIRLINE_ROUTE_PROFILES[name])
+    );
+
+    liveryCache[aircraftId] = canonicalOperators;
+    return canonicalOperators;
+  }
 
   try {
     const res = await fetch(`https://api.infiniteflight.com/public/v2/aircraft/${aircraftId}/liveries?apikey=${LIVERY_API_KEY}`);
@@ -775,8 +801,8 @@ async function generatePassengerJob(index) {
     const operators = await fetchAircraftOperators(aircraft.id);
     if (!operators.length) continue;
 
-    const airline = pickRandom(operators);
-    if (!airline) continue;
+    const airline = canonicalizeAirlineName(pickRandom(operators));
+    if (!airline || !AIRLINE_ROUTE_PROFILES[airline]) continue;
 
     const previewLegs = buildCuratedRoute(base, airline, aircraft.displayName || aircraft.name);
     if (previewLegs.length < 2 || previewLegs.length > 3) continue;
@@ -814,7 +840,7 @@ function renderJobMarket() {
     const item = document.createElement('div');
     item.className = 'list-item';
     item.innerHTML = `
-      <div class="list-row"><strong>${job.airline}</strong><span>$${job.pay.toLocaleString()}</span></div>
+      <div class="list-row"><strong>${canonicalizeAirlineName(job.airline) || 'Unknown Airline'}</strong><span>$${job.pay.toLocaleString()}</span></div>
       <div class="list-row muted"><span>${job.aircraft}</span><span>${job.distanceNm} nm</span></div>
       <div class="list-row muted"><span>Passenger Service: Yes</span><span>${getTypeRatingMultiplier(job.aircraft) > 1 ? 'Type Rating Bonus Applied' : 'Standard Type Rating Pay'}</span></div>
       <button onclick="acceptJob('${job.id}')">Accept Job</button>
@@ -836,6 +862,10 @@ async function loadJobMarket() {
     const job = await generatePassengerJob(attempts);
     attempts += 1;
     if (!job) continue;
+
+    const canonicalAirline = canonicalizeAirlineName(job.airline);
+    if (!canonicalAirline || !AIRLINE_ROUTE_PROFILES[canonicalAirline]) continue;
+    job.airline = canonicalAirline;
 
     const signature = `${job.airline}|${job.aircraft}|${job.distanceNm}`;
     if (seen.has(signature)) continue;

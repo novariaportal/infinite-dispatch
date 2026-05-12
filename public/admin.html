@@ -10,18 +10,18 @@
   <main>
     <section id="adminGate" class="card auth-card">
       <h2>Admin Access</h2>
-      <p class="muted">Profiles-only administration page.</p>
+      <p class="muted">Admin password only.</p>
       <input type="password" id="adminPassword" placeholder="Admin password">
       <button onclick="unlockAdmin()">Unlock</button>
     </section>
 
     <section id="adminPanel" style="display:none;">
       <div class="card">
-        <h2>Profiles Admin</h2>
+        <h2>Users Admin</h2>
         <p id="adminStatus" class="muted"></p>
         <div class="input-group">
           <input type="text" id="profileIdSearch" placeholder="Filter by profile UUID (optional)">
-          <button onclick="loadProfiles()">Load Profiles</button>
+          <button onclick="loadProfiles()">Load Users</button>
         </div>
       </div>
       <div id="profilesContainer" class="list"></div>

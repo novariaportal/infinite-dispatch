@@ -3,6 +3,26 @@ const supabasePublishableKey = window.SUPABASE_PUBLISHABLE_KEY;
 const supabaseClient = window.supabase.createClient(supabaseUrl, supabasePublishableKey);
 
 const ADMIN_PASSWORD = 'ifdispatchadmin';
+const LICENSE_OPTIONS = ['CPL', 'MPL', 'ATPL'];
+const DEFAULT_EMPLOYER_OPTIONS = [
+  'American Airlines',
+  'ANA',
+  'Air France',
+  'British Airways',
+  'Cathay Pacific',
+  'Delta Air Lines',
+  'Emirates',
+  'Etihad Airways',
+  'Japan Airlines',
+  'KLM',
+  'Lufthansa',
+  'Qantas',
+  'Qatar Airways',
+  'Saudia',
+  'Singapore Airlines',
+  'Turkish Airlines',
+  'United Airlines'
+];
 
 function formatRatings(raw) {
   return (raw || '')
@@ -11,17 +31,43 @@ function formatRatings(raw) {
     .filter(Boolean);
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function buildSelectOptions(options, selectedValue) {
+  return options
+    .map((value) => `<option value="${escapeHtml(value)}" ${value === selectedValue ? 'selected' : ''}>${escapeHtml(value)}</option>`)
+    .join('');
+}
+
+function getEmployerOptions(profile) {
+  return [...new Set([...DEFAULT_EMPLOYER_OPTIONS, profile.employer].filter(Boolean))].sort((a, b) => a.localeCompare(b));
+}
+
 function profileCard(profile) {
   const wrap = document.createElement('div');
   wrap.className = 'list-item';
+  const profileName = escapeHtml(profile.username || profile.id);
+  const profileId = escapeHtml(profile.id);
+  const selectedLicense = LICENSE_OPTIONS.includes(profile.license) ? profile.license : LICENSE_OPTIONS[0];
+  const employerOptions = getEmployerOptions(profile);
+
   wrap.innerHTML = `
-    <div class="list-row"><strong>${profile.username || profile.id}</strong><span>${profile.id}</span></div>
+    <div class="list-row"><strong>${profileName}</strong><span>${profileId}</span></div>
     <label>Hours</label>
     <input id="hours_${profile.id}" type="number" value="${profile.hours ?? 0}">
     <label>Jobs / Job Slots</label>
     <input id="slots_${profile.id}" type="number" value="${profile.job_slots ?? 0}">
     <label>License(s)</label>
-    <input id="license_${profile.id}" type="text" value="${profile.license || ''}">
+    <select id="license_${profile.id}">
+      ${buildSelectOptions(LICENSE_OPTIONS, selectedLicense)}
+    </select>
     <label>Position</label>
     <input id="position_${profile.id}" type="text" value="${profile.position || ''}">
     <label>Pay Multiplier</label>
@@ -31,7 +77,9 @@ function profileCard(profile) {
     <label>Money / Balance</label>
     <input id="balance_${profile.id}" type="number" value="${profile.balance ?? 0}">
     <label>Employer</label>
-    <input id="employer_${profile.id}" type="text" value="${profile.employer || ''}">
+    <select id="employer_${profile.id}">
+      ${buildSelectOptions(employerOptions, profile.employer || '')}
+    </select>
     <label>Base Airport</label>
     <input id="base_${profile.id}" type="text" value="${profile.base_airport || ''}">
     <button onclick="saveProfile('${profile.id}')">Save Profile</button>
@@ -46,15 +94,9 @@ async function unlockAdmin() {
     return;
   }
 
-  const { data } = await supabaseClient.auth.getSession();
-  if (!data?.session?.user) {
-    alert('Log into Infinite Dispatch first. Admin is profiles-only and requires a signed-in profile context.');
-    return;
-  }
-
   document.getElementById('adminGate').style.display = 'none';
   document.getElementById('adminPanel').style.display = 'block';
-  document.getElementById('adminStatus').innerText = `Signed in as ${data.session.user.email}`;
+  document.getElementById('adminStatus').innerText = 'Admin unlocked. Showing users.';
   await loadProfiles();
 }
 
@@ -66,8 +108,7 @@ async function loadProfiles() {
   let query = supabaseClient
     .from('profiles')
     .select('id, username, hours, job_slots, license, position, pay_multiplier, type_ratings, balance, employer, base_airport')
-    .order('created_at', { ascending: false })
-    .limit(50);
+    .order('created_at', { ascending: false });
 
   if (filterId) {
     query = query.eq('id', filterId);
