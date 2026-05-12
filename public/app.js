@@ -1293,12 +1293,12 @@ function renderGeneratedDispatch(routePlan) {
     .join('\n');
 
   const totalPay = Math.round(routePlan.legs.reduce((sum, l) => sum + l.pay, 0));
-  const routeSourceLabel = routePlan.routeSource === 'airlabs' ? 'AirLabs schedule data' : 'Curated fallback';
+  const sourceLabel = routePlan.routeSource === 'airlabs' ? 'AirLabs schedule data' : 'Curated fallback';
 
   document.getElementById('dispatchResult').innerText =
     `${routePlan.airline} | ${routePlan.aircraft}\n` +
     `Passenger Service: Yes\n` +
-    `Route Source: ${routeSourceLabel}\n` +
+    `Route Source: ${sourceLabel}\n` +
     `${text}\n` +
     `Total Dispatch Pay: $${totalPay.toLocaleString()}\n` +
     `Route returns to base by leg ${routePlan.legs.length}.`;
