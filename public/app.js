@@ -1260,7 +1260,7 @@ async function generatePassengerJob(index) {
       (!enforcedEmployer || airlineName === enforcedEmployer)
     ));
     if (!eligibleAirlines.length) continue;
-    const airline = enforcedEmployer || pickRandom(eligibleAirlines);
+    const airline = enforcedEmployer ? eligibleAirlines[0] : pickRandom(eligibleAirlines);
     if (!airline) continue;
 
     const maxRangeNm = getAircraftRangeNm(aircraft.displayName || aircraft.name);
@@ -1469,9 +1469,9 @@ function pickRangeValidAirport(origins, destinations, maxRangeNm, blocked = []) 
 }
 
 function buildCuratedRoute(base, airline, aircraftName) {
-  const cleanBase = String(base || '').trim().toUpperCase();
+  const cleanBase = resolveProfileBaseAirport({ base_airport: base });
   const profile = AIRLINE_ROUTE_PROFILES[airline];
-  if (!profile || !AIRPORTS[cleanBase]) return [];
+  if (!profile || !cleanBase) return [];
 
   const maxRangeNm = getAircraftRangeNm(aircraftName);
   const hubs = uniqueStrings(profile.hubs || []);
