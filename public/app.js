@@ -26,8 +26,11 @@ const AIRLABS_FETCH_MAX_PAGES = 3;
 const AIRLABS_MAX_CANDIDATES = 40;
 const AIRLABS_FRONTEND_CACHE_TTL_MS = 2 * 60 * 1000;
 const AIRLABS_FRONTEND_CACHE_MAX_ENTRIES = 120;
+const MS_PER_MINUTE = 60 * 1000;
+const MS_PER_HOUR = 60 * MS_PER_MINUTE;
 const JOB_MARKET_REFRESH_LIMIT = 2;
-const JOB_MARKET_REFRESH_WINDOW_MS = 36 * 60 * 60 * 1000;
+const JOB_MARKET_REFRESH_WINDOW_MS = 36 * MS_PER_HOUR;
+const MAX_JOB_GENERATION_ATTEMPTS_PER_CYCLE = 20;
 const LICENSE_LEVELS = ['PPL', 'CPL', 'MPL', 'ATPL'];
 const LICENSE_META = {
   PPL: { position: 'FO', multiplier: 1.0 },
@@ -306,6 +309,13 @@ function pilotOwnsTypeForAircraft(profile, aircraftName = '') {
   return (profile?.type_ratings || [])
     .map((rating) => normalizeTypeRatingName(rating).toLowerCase())
     .includes(target);
+}
+
+function isMissingJobRefreshColumnError(error) {
+  const code = String(error?.code || '').trim();
+  if (code === '42703' || code === 'PGRST204') return true;
+  const message = String(error?.message || '');
+  return /job_refresh/i.test(message);
 }
 
 function getAirlineNetworkAirports(airline) {
@@ -754,7 +764,7 @@ async function createProfile(user, baseAirport) {
   };
 
   let { error } = await supabaseClient.from('profiles').insert([profile]);
-  if (error && /job_refresh/i.test(error.message || '')) {
+  if (error && isMissingJobRefreshColumnError(error)) {
     const fallbackProfile = { ...profile };
     delete fallbackProfile.job_refreshes_used;
     delete fallbackProfile.job_refresh_window_started_at;
@@ -1131,8 +1141,8 @@ function getJobRefreshWindowState(profile) {
 
 function formatRemainingWindow(msRemaining) {
   if (!Number.isFinite(msRemaining) || msRemaining <= 0) return 'ready now';
-  const hours = Math.floor(msRemaining / (60 * 60 * 1000));
-  const minutes = Math.ceil((msRemaining % (60 * 60 * 1000)) / (60 * 1000));
+  const hours = Math.floor(msRemaining / MS_PER_HOUR);
+  const minutes = Math.ceil((msRemaining % MS_PER_HOUR) / MS_PER_MINUTE);
   if (hours <= 0) return `${minutes}m`;
   return `${hours}h ${minutes}m`;
 }
@@ -1174,7 +1184,7 @@ async function persistJobRefreshUsage(used, windowStartedAt) {
     .select('*')
     .single();
 
-  if (result.error && /job_refresh/i.test(result.error.message || '')) {
+  if (result.error && isMissingJobRefreshColumnError(result.error)) {
     delete refreshUpdates.job_refreshes_used;
     delete refreshUpdates.job_refresh_window_started_at;
     result = await supabaseClient
@@ -1225,7 +1235,7 @@ async function generatePassengerJob(index) {
   if (!models.length) return null;
   const base = (currentProfile?.base_airport || 'WSSS').toUpperCase();
 
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  for (let attempt = 0; attempt < MAX_JOB_GENERATION_ATTEMPTS_PER_CYCLE; attempt += 1) {
     const aircraft = weightedAircraftPick(models);
     if (!aircraft) continue;
 

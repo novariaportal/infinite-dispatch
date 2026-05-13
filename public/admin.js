@@ -61,6 +61,13 @@ function getLicenseOptions(profile) {
   return baseOptions;
 }
 
+function isMissingJobRefreshColumnError(error) {
+  const code = String(error?.code || '').trim();
+  if (code === '42703' || code === 'PGRST204') return true;
+  const message = String(error?.message || '');
+  return /job_refresh/i.test(message);
+}
+
 function profileCard(profile) {
   const wrap = document.createElement('div');
   wrap.className = 'list-item';
@@ -191,7 +198,7 @@ async function saveProfile(profileId) {
     .update(updates)
     .eq('id', profileId);
 
-  if (error && /job_refresh/i.test(error.message || '')) {
+  if (error && isMissingJobRefreshColumnError(error)) {
     delete updates.job_refreshes_used;
     delete updates.job_refresh_window_started_at;
     delete updates.job_refresh_admin_override;
