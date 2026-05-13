@@ -76,6 +76,8 @@ function profileCard(profile) {
   const licenseOptions = getLicenseOptions(profile);
   const selectedLicense = licenseOptions.includes(profile.license) ? profile.license : licenseOptions[0];
   const employerOptions = getEmployerOptions(profile);
+  const refreshesUsed = Number.isFinite(Number(profile.job_refreshes_used)) ? Number(profile.job_refreshes_used) : 0;
+  const refreshWindowStart = profile.job_refresh_window_started_at || '';
 
   wrap.innerHTML = `
     <div class="list-row"><strong>${profileName}</strong><span>${profileId}</span></div>
@@ -102,9 +104,9 @@ function profileCard(profile) {
     <label>Base Airport</label>
     <input id="base_${profile.id}" type="text" value="${profile.base_airport || ''}">
     <label>Job Refreshes Used (36h window)</label>
-    <input id="refreshes_${profile.id}" type="number" min="0" value="${profile.job_refreshes_used ?? 0}">
+    <input id="refreshes_${profile.id}" type="number" min="0" value="${refreshesUsed}">
     <label>Job Refresh Window Start (ISO or blank)</label>
-    <input id="refreshWindow_${profile.id}" type="text" value="${profile.job_refresh_window_started_at || ''}">
+    <input id="refreshWindow_${profile.id}" type="text" value="${refreshWindowStart}">
     <label class="checkbox-row" for="refreshOverride_${profile.id}">
       <input id="refreshOverride_${profile.id}" type="checkbox" ${profile.job_refresh_admin_override ? 'checked' : ''}>
       Admin override refresh limit
@@ -131,7 +133,7 @@ async function loadProfiles() {
   const container = document.getElementById('profilesContainer');
   const filterId = document.getElementById('profileIdSearch').value.trim();
   container.innerHTML = '';
-  const selectFields = '*';
+  const selectFields = 'id, username, hours, job_slots, license, position, pay_multiplier, type_ratings, balance, employer, base_airport, job_refreshes_used, job_refresh_window_started_at, job_refresh_admin_override';
   let data = [];
 
   if (filterId) {

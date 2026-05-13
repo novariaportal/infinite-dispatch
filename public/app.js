@@ -311,6 +311,10 @@ function pilotOwnsTypeForAircraft(profile, aircraftName = '') {
     .includes(target);
 }
 
+function hasTypeRatings(profile) {
+  return Array.isArray(profile?.type_ratings) && profile.type_ratings.length > 0;
+}
+
 function isMissingJobRefreshColumnError(error) {
   const code = String(error?.code || '').trim();
   if (code === '42703' || code === 'PGRST204') return true;
@@ -1019,9 +1023,9 @@ function getPopularityMultiplier(aircraftName) {
 }
 
 function getTypeRatingMultiplier(aircraftName) {
+  if (!hasTypeRatings(currentProfile)) return 1.0;
   const ratings = (currentProfile?.type_ratings || []).map((rating) => normalizeTypeRatingName(rating));
   const normalizedAircraft = normalizeTypeRatingName(aircraftName);
-  if (!ratings.length) return 1.0;
 
   if (ratings.some((r) => r.toLowerCase() === normalizedAircraft.toLowerCase())) return 1.2;
 
@@ -1120,7 +1124,7 @@ function calculateJobPay(distanceNm, aircraftName) {
 function getJobRefreshWindowState(profile) {
   const override = Boolean(profile?.job_refresh_admin_override);
   const rawUsed = Number(profile?.job_refreshes_used || 0);
-  const used = Number.isFinite(rawUsed) && rawUsed > 0 ? Math.floor(rawUsed) : 0;
+  const used = Number.isFinite(rawUsed) ? Math.max(0, Math.floor(rawUsed)) : 0;
   const startedAtRaw = profile?.job_refresh_window_started_at;
   const startedAtMs = startedAtRaw ? Date.parse(startedAtRaw) : Number.NaN;
   const hasValidStart = Number.isFinite(startedAtMs);
@@ -1210,7 +1214,7 @@ async function requestJobMarketRefresh() {
   const state = getJobRefreshWindowState(currentProfile);
   if (!state.override && state.remaining <= 0) {
     renderJobRefreshStatus();
-    alert('Refresh limit reached. You can refresh jobs again after the 36-hour window resets.');
+    alert(`Refresh limit reached (${JOB_MARKET_REFRESH_LIMIT} per 36 hours). You can refresh jobs again after the window resets.`);
     return;
   }
 
@@ -1289,8 +1293,7 @@ function renderJobMarket() {
   countEl.innerText = availableJobs.length;
 
   if (!availableJobs.length) {
-    const hasRatings = Array.isArray(currentProfile?.type_ratings) && currentProfile.type_ratings.length > 0;
-    list.innerHTML = hasRatings
+    list.innerHTML = hasTypeRatings(currentProfile)
       ? '<div class="list-item muted">No jobs available for your current type ratings. Try refreshing or buying another type rating.</div>'
       : '<div class="list-item muted">No type rating found. Buy a type rating in Pilot Shop to unlock jobs.</div>';
     return;
