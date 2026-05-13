@@ -1250,7 +1250,7 @@ async function generatePassengerJob(index) {
   const base = resolveProfileBaseAirport(currentProfile);
   if (!base) return null;
   const preferredEmployer = normalizeAirlineName(currentProfile?.employer);
-  const enforcedEmployer = preferredEmployer && AIRLINE_ROUTE_PROFILES[preferredEmployer]
+  const validatedEmployer = preferredEmployer && AIRLINE_ROUTE_PROFILES[preferredEmployer]
     ? preferredEmployer
     : null;
 
@@ -1261,10 +1261,10 @@ async function generatePassengerJob(index) {
     const operators = await fetchAircraftOperators(aircraft.id);
     const eligibleAirlines = operators.filter((airlineName) => (
       AIRLINE_ROUTE_PROFILES[airlineName] &&
-      (!enforcedEmployer || airlineName === enforcedEmployer)
+      (!validatedEmployer || airlineName === validatedEmployer)
     ));
     if (!eligibleAirlines.length) continue;
-    const airline = enforcedEmployer || pickRandom(eligibleAirlines);
+    const airline = pickRandom(eligibleAirlines);
     if (!airline) continue;
 
     const maxRangeNm = getAircraftRangeNm(aircraft.displayName || aircraft.name);
