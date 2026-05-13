@@ -291,6 +291,50 @@ function uniqueStrings(arr) {
   return [...new Set((arr || []).filter(Boolean).map((x) => String(x).trim()))];
 }
 
+function getAirlineNetworkAirports(airline) {
+  const profile = AIRLINE_ROUTE_PROFILES[airline];
+  if (!profile) return [];
+
+  return uniqueStrings([
+    ...(profile.hubs || []),
+    ...(profile.regional || []),
+    ...(profile.longHaul || []),
+    ...Object.keys(profile.positioningFromBase || {}),
+    ...Object.values(profile.positioningFromBase || {}).flat()
+  ]);
+}
+
+function airlineServesBaseAirport(airline, baseAirport) {
+  const cleanBase = String(baseAirport || '').trim().toUpperCase();
+  if (!cleanBase) return false;
+  return getAirlineNetworkAirports(airline).includes(cleanBase);
+}
+
+function getCompatibleEmployersForBase(baseAirport) {
+  const cleanBase = String(baseAirport || '').trim().toUpperCase();
+  const airlines = Object.keys(AIRLINE_ROUTE_PROFILES);
+  if (!cleanBase) return DEFAULT_EMPLOYERS;
+
+  const hubMatches = airlines.filter((airline) => AIRLINE_ROUTE_PROFILES[airline]?.hubs?.includes(cleanBase));
+  if (hubMatches.length) return hubMatches;
+
+  const networkMatches = airlines.filter((airline) => airlineServesBaseAirport(airline, cleanBase));
+  if (networkMatches.length) return networkMatches;
+
+  const baseRegion = getAirportRegion(cleanBase);
+  const regionalMatches = airlines.filter((airline) => (
+    (AIRLINE_ROUTE_PROFILES[airline]?.hubs || []).some((hub) => getAirportRegion(hub) === baseRegion)
+  ));
+  return regionalMatches.length ? regionalMatches : DEFAULT_EMPLOYERS;
+}
+
+function resolveEmployerForBase(baseAirport, preferredEmployer = null) {
+  const compatibleEmployers = getCompatibleEmployersForBase(baseAirport);
+  const normalizedPreferred = normalizeAirlineName(preferredEmployer);
+  if (normalizedPreferred && compatibleEmployers.includes(normalizedPreferred)) return normalizedPreferred;
+  return compatibleEmployers[0] || normalizedPreferred || DEFAULT_EMPLOYERS[0];
+}
+
 function normalizeAirlineName(rawName = '') {
   let name = String(rawName || '').replace(/\s+/g, ' ').trim();
   if (!name) return null;
@@ -387,6 +431,8 @@ async function fetchAirlabsCandidateLegs(params = {}) {
   if (arr) baseParams.arr_icao = arr;
 
   const codes = getAirlineCodes(airline);
+  const expectedIata = String(codes?.iata || '').trim().toUpperCase();
+  const expectedIcao = String(codes?.icao || '').trim().toUpperCase();
   if (codes?.iata) baseParams.airline_iata = codes.iata;
   if (codes?.icao) baseParams.airline_icao = codes.icao;
   baseParams.limit = AIRLABS_MAX_LIMIT;
@@ -404,6 +450,13 @@ async function fetchAirlabsCandidateLegs(params = {}) {
     const payload = await fetchAirlabsRoutes({ ...baseParams, offset });
     const rows = Array.isArray(payload?.data) ? payload.data : [];
     rows.forEach((row) => {
+      const rowIata = String(row?.airline_iata || '').trim().toUpperCase();
+      const rowIcao = String(row?.airline_icao || '').trim().toUpperCase();
+      const airlineMatched = (!expectedIata && !expectedIcao)
+        || (expectedIata && rowIata === expectedIata)
+        || (expectedIcao && rowIcao === expectedIcao);
+      if (!airlineMatched) return;
+
       const origin = String(row?.dep_icao || '').toUpperCase();
       const destination = String(row?.arr_icao || '').toUpperCase();
       if (!AIRPORTS[origin] || !AIRPORTS[destination]) return;
@@ -663,12 +716,13 @@ async function completePasswordRecovery() {
 async function createProfile(user, baseAirport) {
   const totalHours = 0;
   const prog = getProgression(totalHours);
+  const normalizedBaseAirport = baseAirport.trim().toUpperCase();
 
   const profile = {
     id: user.id,
     username: user.email,
-    base_airport: baseAirport.trim().toUpperCase(),
-    employer: pickRandom(DEFAULT_EMPLOYERS) || 'Singapore Airlines',
+    base_airport: normalizedBaseAirport,
+    employer: resolveEmployerForBase(normalizedBaseAirport),
     hours: totalHours,
     balance: 500,
     license: prog.license,
@@ -721,11 +775,13 @@ async function refreshDerivedProfile(profile) {
   const jobSlots = getJobSlotCount(profile.hours || 0);
   const effectiveLicense = highestLicense(profile.license, prog.license);
   const effectiveState = licenseStateFor(effectiveLicense);
+  const effectiveEmployer = resolveEmployerForBase(profile.base_airport, profile.employer);
   const updates = {};
   if (profile.license !== effectiveLicense) updates.license = effectiveLicense;
   if (profile.position !== effectiveState.position) updates.position = effectiveState.position;
   if (Number(profile.pay_multiplier) !== effectiveState.multiplier) updates.pay_multiplier = effectiveState.multiplier;
   if (profile.job_slots !== jobSlots) updates.job_slots = jobSlots;
+  if (profile.employer !== effectiveEmployer) updates.employer = effectiveEmployer;
 
   if (Object.keys(updates).length === 0) return profile;
 
@@ -1017,16 +1073,15 @@ function calculateJobPay(distanceNm, aircraftName) {
 async function generatePassengerJob(index) {
   const models = await loadAircraftCatalog();
   const base = (currentProfile?.base_airport || 'WSSS').toUpperCase();
+  const airline = resolveEmployerForBase(base, currentProfile?.employer);
+  if (!airline || !AIRLINE_ROUTE_PROFILES[airline]) return null;
 
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const aircraft = weightedAircraftPick(models);
     if (!aircraft) continue;
 
     const operators = await fetchAircraftOperators(aircraft.id);
-    if (!operators.length) continue;
-
-    const airline = normalizeAirlineName(pickRandom(operators));
-    if (!airline || !AIRLINE_ROUTE_PROFILES[airline]) continue;
+    if (!operators.includes(airline)) continue;
 
     const maxRangeNm = getAircraftRangeNm(aircraft.displayName || aircraft.name);
     const airlabsLegs = await fetchAirlabsCandidateLegs({
