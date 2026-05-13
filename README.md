@@ -218,7 +218,7 @@ The frontend will call this function for route candidates and automatically fall
 
 ## 📘 User Guide
 
-Open `public/user-guide.html` or use the in-app link to view the guide.
+Open `/user-guide/` (or `public/user-guide.html`) or use the in-app link to view the guide.
 
 ---
 
