@@ -72,9 +72,10 @@ function isMissingJobRefreshColumnError(error) {
 }
 
 function withRefreshDefaults(profile) {
+  const refreshCount = Number(profile?.job_refreshes_used);
   return {
     ...profile,
-    job_refreshes_used: Number.isFinite(Number(profile?.job_refreshes_used)) ? Number(profile.job_refreshes_used) : 0,
+    job_refreshes_used: Number.isFinite(refreshCount) ? refreshCount : 0,
     job_refresh_window_started_at: profile?.job_refresh_window_started_at || null,
     job_refresh_admin_override: Boolean(profile?.job_refresh_admin_override)
   };
@@ -84,9 +85,9 @@ async function runProfileSelectWithFallback(buildQuery) {
   let result = await buildQuery(PROFILE_SELECT_ALL_FIELDS);
   if (result.error && isMissingJobRefreshColumnError(result.error)) {
     result = await buildQuery(PROFILE_SELECT_BASE_FIELDS);
-    if (!result.error) {
-      result.data = (result.data || []).map((profile) => withRefreshDefaults(profile));
-    }
+  }
+  if (!result.error) {
+    result.data = (result.data || []).map((profile) => withRefreshDefaults(profile));
   }
   return result;
 }
@@ -169,7 +170,7 @@ async function loadProfiles() {
       container.innerHTML = `<div class="list-item muted">${error.message}</div>`;
       return;
     }
-    data = (filteredData || []).map((profile) => withRefreshDefaults(profile));
+    data = filteredData || [];
   } else {
     const pageSize = 200;
     let from = 0;
@@ -187,7 +188,7 @@ async function loadProfiles() {
       }
 
       if (!chunk?.length) break;
-      data.push(...chunk.map((profile) => withRefreshDefaults(profile)));
+      data.push(...chunk);
       if (chunk.length < pageSize) break;
       from += pageSize;
     }
