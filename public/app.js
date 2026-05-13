@@ -1264,7 +1264,6 @@ async function generatePassengerJob(index) {
       (!enforcedEmployer || airlineName === enforcedEmployer)
     ));
     if (!eligibleAirlines.length) continue;
-    if (enforcedEmployer && !eligibleAirlines.includes(enforcedEmployer)) continue;
     const airline = enforcedEmployer || pickRandom(eligibleAirlines);
     if (!airline) continue;
 
