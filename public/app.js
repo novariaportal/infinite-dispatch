@@ -1259,10 +1259,8 @@ async function generatePassengerJob(index) {
     if (!aircraft) continue;
 
     const operators = await fetchAircraftOperators(aircraft.id);
-    const eligibleAirlines = operators.filter((airlineName) => (
-      AIRLINE_ROUTE_PROFILES[airlineName] &&
-      (!validatedEmployer || airlineName === validatedEmployer)
-    ));
+    const eligibleAirlines = operators.filter((airlineName) => AIRLINE_ROUTE_PROFILES[airlineName]
+      && (!validatedEmployer || airlineName === validatedEmployer));
     if (!eligibleAirlines.length) continue;
     const airline = pickRandom(eligibleAirlines);
     if (!airline) continue;
@@ -1339,7 +1337,11 @@ async function loadJobMarket() {
     const countEl = document.getElementById('jobsCount');
     if (countEl) countEl.innerText = '0';
     if (list) {
-      list.innerHTML = '<div class="list-item muted">Set a valid base airport in your profile to generate jobs.</div>';
+      list.innerHTML = '';
+      const message = document.createElement('div');
+      message.className = 'list-item muted';
+      message.textContent = 'Set a valid base airport in your profile to generate jobs.';
+      list.appendChild(message);
     }
     return;
   }
