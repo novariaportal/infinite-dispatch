@@ -72,10 +72,10 @@ function isMissingJobRefreshColumnError(error) {
 }
 
 function withRefreshDefaults(profile) {
-  const refreshCount = Number(profile?.job_refreshes_used);
+  const rawRefreshCount = Number(profile?.job_refreshes_used);
   return {
     ...profile,
-    job_refreshes_used: Number.isFinite(refreshCount) ? refreshCount : 0,
+    job_refreshes_used: Number.isFinite(rawRefreshCount) ? rawRefreshCount : 0,
     job_refresh_window_started_at: profile?.job_refresh_window_started_at ?? null,
     job_refresh_admin_override: Boolean(profile?.job_refresh_admin_override)
   };
