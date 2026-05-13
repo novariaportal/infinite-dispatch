@@ -23,6 +23,9 @@ const DEFAULT_EMPLOYER_OPTIONS = [
   'Turkish Airlines',
   'United Airlines'
 ];
+const PROFILE_SELECT_BASE_FIELDS = 'id, username, hours, job_slots, license, position, pay_multiplier, type_ratings, balance, employer, base_airport';
+const PROFILE_SELECT_REFRESH_FIELDS = 'job_refreshes_used, job_refresh_window_started_at, job_refresh_admin_override';
+const PROFILE_SELECT_ALL_FIELDS = `${PROFILE_SELECT_BASE_FIELDS}, ${PROFILE_SELECT_REFRESH_FIELDS}`;
 
 function formatRatings(raw) {
   return (raw || '')
@@ -66,6 +69,27 @@ function isMissingJobRefreshColumnError(error) {
   if (code === '42703' || code === 'PGRST204') return true;
   const message = String(error?.message || '');
   return /job_refresh/i.test(message);
+}
+
+function withRefreshDefaults(profile) {
+  const rawRefreshCount = Number(profile?.job_refreshes_used);
+  return {
+    ...profile,
+    job_refreshes_used: Number.isFinite(rawRefreshCount) ? rawRefreshCount : 0,
+    job_refresh_window_started_at: profile?.job_refresh_window_started_at ?? null,
+    job_refresh_admin_override: Boolean(profile?.job_refresh_admin_override)
+  };
+}
+
+async function runProfileSelectWithFallback(buildQuery) {
+  let result = await buildQuery(PROFILE_SELECT_ALL_FIELDS);
+  if (result.error && isMissingJobRefreshColumnError(result.error)) {
+    result = await buildQuery(PROFILE_SELECT_BASE_FIELDS);
+  }
+  if (!result.error) {
+    result.data = (result.data || []).map((profile) => withRefreshDefaults(profile));
+  }
+  return result;
 }
 
 function profileCard(profile) {
@@ -133,16 +157,15 @@ async function loadProfiles() {
   const container = document.getElementById('profilesContainer');
   const filterId = document.getElementById('profileIdSearch').value.trim();
   container.innerHTML = '';
-  const selectFields = 'id, username, hours, job_slots, license, position, pay_multiplier, type_ratings, balance, employer, base_airport, job_refreshes_used, job_refresh_window_started_at, job_refresh_admin_override';
   let data = [];
 
   if (filterId) {
-    const { data: filteredData, error } = await supabaseClient
+    const { data: filteredData, error } = await runProfileSelectWithFallback((selectFields) => supabaseClient
       .from('profiles')
       .select(selectFields)
       .eq('id', filterId)
       .order('created_at', { ascending: false })
-      .limit(1);
+      .limit(1));
     if (error) {
       container.innerHTML = `<div class="list-item muted">${error.message}</div>`;
       return;
@@ -153,11 +176,11 @@ async function loadProfiles() {
     let from = 0;
 
     while (true) {
-      const { data: chunk, error } = await supabaseClient
+      const { data: chunk, error } = await runProfileSelectWithFallback((selectFields) => supabaseClient
         .from('profiles')
         .select(selectFields)
         .order('created_at', { ascending: false })
-        .range(from, from + pageSize - 1);
+        .range(from, from + pageSize - 1));
 
       if (error) {
         container.innerHTML = `<div class="list-item muted">${error.message}</div>`;
