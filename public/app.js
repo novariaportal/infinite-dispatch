@@ -366,6 +366,16 @@ function resolveEmployerForBase(baseAirport, preferredEmployer = null) {
   return compatibleEmployers[0] || normalizedPreferred || DEFAULT_EMPLOYERS[0];
 }
 
+function normalizeBaseAirport(baseAirport) {
+  const normalized = String(baseAirport || '').trim().toUpperCase();
+  if (!normalized || !AIRPORTS[normalized]) return null;
+  return normalized;
+}
+
+function resolveProfileBaseAirport(profile) {
+  return normalizeBaseAirport(profile?.base_airport);
+}
+
 function normalizeAirlineName(rawName = '') {
   let name = String(rawName || '').replace(/\s+/g, ' ').trim();
   if (!name) return null;
@@ -1237,14 +1247,20 @@ async function getRatedPassengerAircraft() {
 async function generatePassengerJob(index) {
   const models = await getRatedPassengerAircraft();
   if (!models.length) return null;
-  const base = (currentProfile?.base_airport || 'WSSS').toUpperCase();
+  const base = resolveProfileBaseAirport(currentProfile);
+  if (!base) return null;
+  const preferredEmployer = normalizeAirlineName(currentProfile?.employer);
+  const validatedEmployer = preferredEmployer && AIRLINE_ROUTE_PROFILES[preferredEmployer]
+    ? preferredEmployer
+    : null;
 
   for (let attempt = 0; attempt < MAX_JOB_GENERATION_ATTEMPTS_PER_CYCLE; attempt += 1) {
     const aircraft = weightedAircraftPick(models);
     if (!aircraft) continue;
 
     const operators = await fetchAircraftOperators(aircraft.id);
-    const eligibleAirlines = operators.filter((airlineName) => AIRLINE_ROUTE_PROFILES[airlineName]);
+    const eligibleAirlines = operators.filter((airlineName) => AIRLINE_ROUTE_PROFILES[airlineName]
+      && (!validatedEmployer || airlineName === validatedEmployer));
     if (!eligibleAirlines.length) continue;
     const airline = pickRandom(eligibleAirlines);
     if (!airline) continue;
@@ -1314,6 +1330,21 @@ function renderJobMarket() {
 
 async function loadJobMarket() {
   if (!currentProfile) return;
+  const baseAirport = resolveProfileBaseAirport(currentProfile);
+  if (!baseAirport) {
+    availableJobs = [];
+    const list = document.getElementById('jobsList');
+    const countEl = document.getElementById('jobsCount');
+    if (countEl) countEl.innerText = '0';
+    if (list) {
+      list.innerHTML = '';
+      const message = document.createElement('div');
+      message.className = 'list-item muted';
+      message.textContent = 'Set a valid base airport in your profile to generate jobs.';
+      list.appendChild(message);
+    }
+    return;
+  }
 
   const slots = Number(currentProfile.job_slots || 0);
   availableJobs = [];
@@ -1444,9 +1475,9 @@ function pickRangeValidAirport(origins, destinations, maxRangeNm, blocked = []) 
 }
 
 function buildCuratedRoute(base, airline, aircraftName) {
-  const cleanBase = (base || 'WSSS').toUpperCase();
+  const cleanBase = normalizeBaseAirport(base);
   const profile = AIRLINE_ROUTE_PROFILES[airline];
-  if (!profile || !AIRPORTS[cleanBase]) return [];
+  if (!profile || !cleanBase) return [];
 
   const maxRangeNm = getAircraftRangeNm(aircraftName);
   const hubs = uniqueStrings(profile.hubs || []);
@@ -1530,7 +1561,11 @@ async function generateDispatch() {
     return;
   }
 
-  const base = (currentProfile.base_airport || 'WSSS').toUpperCase();
+  const base = resolveProfileBaseAirport(currentProfile);
+  if (!base) {
+    alert('Set a valid base airport in your profile before generating dispatch.');
+    return;
+  }
   const maxRangeNm = getAircraftRangeNm(acceptedJob.aircraft);
   let legs = [];
   let routeSource = 'airlabs';
