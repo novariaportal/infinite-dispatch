@@ -8,10 +8,6 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-app.get('/user-guide', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'user-guide.html'));
-});
-
 // Fetch the secret key from the server environment
 const IF_API_KEY = process.env.IF_API_KEY;
 

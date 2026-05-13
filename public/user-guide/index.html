@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Infinite Dispatch - User Guide</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <div>
+      <h1>✈️ Infinite Dispatch</h1>
+      <div>User Guide</div>
+    </div>
+    <nav class="header-nav">
+      <a href="/">Back to App</a>
+    </nav>
+  </header>
+
+  <main class="guide-container">
+    <h1>Infinite Dispatch User Guide</h1>
+    <p>Welcome to Infinite Dispatch. This guide explains the core gameplay loop, account setup, and how to use the dashboard.</p>
+
+    <div class="card">
+      <h2>1) Create Your Account</h2>
+      <ol>
+        <li>Enter your email + password.</li>
+        <li>Choose a <strong>Base Airport (ICAO)</strong> at signup.</li>
+        <li>Click <strong>Login / Register</strong>.</li>
+      </ol>
+      <p><strong>Important:</strong> Your base airport is locked after signup.</p>
+    </div>
+
+    <div class="card">
+      <h2>2) Base Airport Rules</h2>
+      <ul>
+        <li>You are always stationed at your selected base.</li>
+        <li>Routes will return to base within 3 legs.</li>
+        <li>Your employer is assigned from airlines that fit your base, and jobs stay tied to that airline.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>3) Job Market Slots</h2>
+      <p>The job board shows a fixed number of slots based on total hours:</p>
+      <ul>
+        <li>0–150: 2</li>
+        <li>150–350: 4</li>
+        <li>350–550: 5</li>
+        <li>550–650: 7</li>
+        <li>650–900: 8</li>
+        <li>900+: 9–18</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>4) License & Rank Progression</h2>
+      <ul>
+        <li>PPL / FO → 1.0× pay</li>
+        <li>CPL / SFO → 1.5× pay</li>
+        <li>MPL / CPT → 2.0× pay</li>
+        <li>ATPL / SR CPT → 2.5× pay</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>5) Choose Your Server</h2>
+      <p>Select the server you are flying on (Casual, Training, or Expert) before dispatching your flight.</p>
+      <p>The tracker will use your server selection to find your live flight data.</p>
+    </div>
+
+    <div class="card">
+      <h2>6) SimBrief Integration</h2>
+      <ol>
+        <li>Enter your SimBrief username.</li>
+        <li>Click <strong>Fetch Plan</strong>.</li>
+        <li>The plan is saved automatically in Supabase.</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h2>7) Flight Tracking</h2>
+      <p>Click <strong>Start Flight & Tracking</strong> after fetching a plan.</p>
+      <p>The tracking session is saved in Supabase and marked as <strong>EN ROUTE</strong>.</p>
+      <p>Live position updates are pulled by a Supabase Edge Function every few minutes.</p>
+      <p>Tracking now shows your <strong>Callsign</strong> and an in-app <strong>ETA</strong> estimate while en route.</p>
+      <p>Pay and hours are awarded only after completion is validated near destination (not just by disconnect).</p>
+    </div>
+
+    <div class="card">
+      <h2>8) Tracking History</h2>
+      <p>The dashboard shows your latest Infinite Dispatch flights (server, status, and route).</p>
+    </div>
+
+    <div class="card">
+      <h2>9) Password Reset</h2>
+      <p>Use the <strong>Forgot Password</strong> link on the login screen to request a reset email.</p>
+    </div>
+
+    <div class="card">
+      <h2>10) Data Storage</h2>
+      <p>All accounts, profiles, SimBrief plans, and tracking sessions are stored in Supabase.</p>
+    </div>
+  </main>
+</body>
+</html>
