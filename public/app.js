@@ -366,10 +366,14 @@ function resolveEmployerForBase(baseAirport, preferredEmployer = null) {
   return compatibleEmployers[0] || normalizedPreferred || DEFAULT_EMPLOYERS[0];
 }
 
+function normalizeBaseAirport(baseAirport) {
+  const normalized = String(baseAirport || '').trim().toUpperCase();
+  if (!normalized || !AIRPORTS[normalized]) return null;
+  return normalized;
+}
+
 function resolveProfileBaseAirport(profile) {
-  const baseAirport = String(profile?.base_airport || '').trim().toUpperCase();
-  if (!baseAirport || !AIRPORTS[baseAirport]) return null;
-  return baseAirport;
+  return normalizeBaseAirport(profile?.base_airport);
 }
 
 function normalizeAirlineName(rawName = '') {
@@ -1260,7 +1264,8 @@ async function generatePassengerJob(index) {
       (!enforcedEmployer || airlineName === enforcedEmployer)
     ));
     if (!eligibleAirlines.length) continue;
-    const airline = enforcedEmployer ? eligibleAirlines[0] : pickRandom(eligibleAirlines);
+    if (enforcedEmployer && !eligibleAirlines.includes(enforcedEmployer)) continue;
+    const airline = enforcedEmployer || pickRandom(eligibleAirlines);
     if (!airline) continue;
 
     const maxRangeNm = getAircraftRangeNm(aircraft.displayName || aircraft.name);
@@ -1469,7 +1474,7 @@ function pickRangeValidAirport(origins, destinations, maxRangeNm, blocked = []) 
 }
 
 function buildCuratedRoute(base, airline, aircraftName) {
-  const cleanBase = resolveProfileBaseAirport({ base_airport: base });
+  const cleanBase = normalizeBaseAirport(base);
   const profile = AIRLINE_ROUTE_PROFILES[airline];
   if (!profile || !cleanBase) return [];
 
