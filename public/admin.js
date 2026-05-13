@@ -94,6 +94,14 @@ function profileCard(profile) {
     </select>
     <label>Base Airport</label>
     <input id="base_${profile.id}" type="text" value="${profile.base_airport || ''}">
+    <label>Job Refreshes Used (36h window)</label>
+    <input id="refreshes_${profile.id}" type="number" min="0" value="${profile.job_refreshes_used ?? 0}">
+    <label>Job Refresh Window Start (ISO or blank)</label>
+    <input id="refreshWindow_${profile.id}" type="text" value="${profile.job_refresh_window_started_at || ''}">
+    <label class="checkbox-row" for="refreshOverride_${profile.id}">
+      <input id="refreshOverride_${profile.id}" type="checkbox" ${profile.job_refresh_admin_override ? 'checked' : ''}>
+      Admin override refresh limit
+    </label>
     <button onclick="saveProfile('${profile.id}')">Save Profile</button>
   `;
   return wrap;
@@ -116,7 +124,7 @@ async function loadProfiles() {
   const container = document.getElementById('profilesContainer');
   const filterId = document.getElementById('profileIdSearch').value.trim();
   container.innerHTML = '';
-  const selectFields = 'id, username, hours, job_slots, license, position, pay_multiplier, type_ratings, balance, employer, base_airport';
+  const selectFields = '*';
   let data = [];
 
   if (filterId) {
@@ -172,13 +180,26 @@ async function saveProfile(profileId) {
     type_ratings: formatRatings(document.getElementById(`ratings_${profileId}`).value),
     balance: Number(document.getElementById(`balance_${profileId}`).value || 0),
     employer: (document.getElementById(`employer_${profileId}`).value || '').trim(),
-    base_airport: (document.getElementById(`base_${profileId}`).value || '').trim().toUpperCase()
+    base_airport: (document.getElementById(`base_${profileId}`).value || '').trim().toUpperCase(),
+    job_refreshes_used: Math.max(0, Number(document.getElementById(`refreshes_${profileId}`).value || 0)),
+    job_refresh_window_started_at: (document.getElementById(`refreshWindow_${profileId}`).value || '').trim() || null,
+    job_refresh_admin_override: Boolean(document.getElementById(`refreshOverride_${profileId}`).checked)
   };
 
-  const { error } = await supabaseClient
+  let { error } = await supabaseClient
     .from('profiles')
     .update(updates)
     .eq('id', profileId);
+
+  if (error && /job_refresh/i.test(error.message || '')) {
+    delete updates.job_refreshes_used;
+    delete updates.job_refresh_window_started_at;
+    delete updates.job_refresh_admin_override;
+    ({ error } = await supabaseClient
+      .from('profiles')
+      .update(updates)
+      .eq('id', profileId));
+  }
 
   if (error) {
     alert(error.message);

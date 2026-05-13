@@ -172,8 +172,9 @@
             <section id="jobsPage" class="page">
               <h2>Job Market</h2>
               <p class="muted">Passenger jobs shown: <strong id="jobsCount">0</strong></p>
+              <p id="jobRefreshStatus" class="muted">Refreshes remaining: --</p>
               <div class="input-group">
-                <button onclick="loadJobMarket()">Refresh Jobs</button>
+                <button id="refreshJobsBtn" onclick="requestJobMarketRefresh()">Refresh Jobs</button>
               </div>
               <div id="jobsList" class="list"></div>
             </section>

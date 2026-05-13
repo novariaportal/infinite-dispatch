@@ -22,9 +22,19 @@ Job slots are fixed by total hours:
 - 650–900: **8**
 - 900+: **9–18** (fluctuates)
 
-### 3. Base Airport Lock
+### 3. Type-Rating Driven Jobs
+- New accounts start with **one random type rating**.
+- Job Market offers are generated only for aircraft types the pilot is rated on.
+- Airlines shown in offers must have that aircraft type available in Infinite Flight liveries.
+- Buying additional type ratings expands eligible airline/job offers.
+
+### 4. Base Airport Lock
 Your base airport is chosen at signup and **cannot be changed**.
-Your employer is automatically aligned to that base, and generated jobs stay within that airline's network.
+Generated routes are still built from your base airport.
+
+### 5. Job Refresh Limits
+- Pilots can manually refresh the Job Market up to **2 times every 36 hours**.
+- Admins can override the refresh limit per profile in the admin portal.
 
 ---
 
@@ -46,6 +56,9 @@ create table if not exists public.profiles (
   pay_multiplier numeric not null default 1.0,
   job_slots integer not null default 2,
   type_ratings text[] not null default '{}',
+  job_refreshes_used integer not null default 0,
+  job_refresh_window_started_at timestamp with time zone,
+  job_refresh_admin_override boolean not null default false,
   created_at timestamp with time zone default now()
 );
 

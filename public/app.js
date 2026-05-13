@@ -26,6 +26,8 @@ const AIRLABS_FETCH_MAX_PAGES = 3;
 const AIRLABS_MAX_CANDIDATES = 40;
 const AIRLABS_FRONTEND_CACHE_TTL_MS = 2 * 60 * 1000;
 const AIRLABS_FRONTEND_CACHE_MAX_ENTRIES = 120;
+const JOB_MARKET_REFRESH_LIMIT = 2;
+const JOB_MARKET_REFRESH_WINDOW_MS = 36 * 60 * 60 * 1000;
 const LICENSE_LEVELS = ['PPL', 'CPL', 'MPL', 'ATPL'];
 const LICENSE_META = {
   PPL: { position: 'FO', multiplier: 1.0 },
@@ -289,6 +291,21 @@ function shuffleArray(input = []) {
 
 function uniqueStrings(arr) {
   return [...new Set((arr || []).filter(Boolean).map((x) => String(x).trim()))];
+}
+
+function normalizeTypeRatingName(ratingName = '') {
+  const trimmed = String(ratingName || '').trim();
+  if (!trimmed) return '';
+  return getAircraftDisplayName(trimmed);
+}
+
+function pilotOwnsTypeForAircraft(profile, aircraftName = '') {
+  const target = normalizeTypeRatingName(aircraftName).toLowerCase();
+  if (!target) return false;
+
+  return (profile?.type_ratings || [])
+    .map((rating) => normalizeTypeRatingName(rating).toLowerCase())
+    .includes(target);
 }
 
 function getAirlineNetworkAirports(airline) {
@@ -717,6 +734,7 @@ async function createProfile(user, baseAirport) {
   const totalHours = 0;
   const prog = getProgression(totalHours);
   const normalizedBaseAirport = baseAirport.trim().toUpperCase();
+  const starterTypeRating = await pickRandomStarterTypeRating();
 
   const profile = {
     id: user.id,
@@ -729,10 +747,20 @@ async function createProfile(user, baseAirport) {
     position: prog.position,
     pay_multiplier: prog.multiplier,
     job_slots: getJobSlotCount(totalHours),
-    type_ratings: ['Cessna 172', 'Cirrus SR22 GTS', 'TBM-930']
+    type_ratings: [starterTypeRating],
+    job_refreshes_used: 0,
+    job_refresh_window_started_at: null,
+    job_refresh_admin_override: false
   };
 
-  const { error } = await supabaseClient.from('profiles').insert([profile]);
+  let { error } = await supabaseClient.from('profiles').insert([profile]);
+  if (error && /job_refresh/i.test(error.message || '')) {
+    const fallbackProfile = { ...profile };
+    delete fallbackProfile.job_refreshes_used;
+    delete fallbackProfile.job_refresh_window_started_at;
+    delete fallbackProfile.job_refresh_admin_override;
+    ({ error } = await supabaseClient.from('profiles').insert([fallbackProfile]));
+  }
   if (error) throw error;
   return profile;
 }
@@ -923,6 +951,7 @@ function renderDashboard(profile) {
   document.getElementById('sidebarEmployer').innerText = `Employer: ${profile.employer || 'Unassigned'}`;
   document.getElementById('sidebarBase').innerText = `Base: ${profile.base_airport || '----'}`;
   renderOnboardingCard(profile);
+  renderJobRefreshStatus();
 }
 
 function restoreLiveryCache() {
@@ -980,12 +1009,13 @@ function getPopularityMultiplier(aircraftName) {
 }
 
 function getTypeRatingMultiplier(aircraftName) {
-  const ratings = currentProfile?.type_ratings || [];
+  const ratings = (currentProfile?.type_ratings || []).map((rating) => normalizeTypeRatingName(rating));
+  const normalizedAircraft = normalizeTypeRatingName(aircraftName);
   if (!ratings.length) return 1.0;
 
-  if (ratings.some((r) => r.toLowerCase() === aircraftName.toLowerCase())) return 1.2;
+  if (ratings.some((r) => r.toLowerCase() === normalizedAircraft.toLowerCase())) return 1.2;
 
-  const family = aircraftName.split(' ')[0]?.toLowerCase();
+  const family = normalizedAircraft.split(' ')[0]?.toLowerCase();
   if (ratings.some((r) => r.toLowerCase().startsWith(family))) return 1.1;
 
   if (ratings.length >= 8) return 1.06;
@@ -1008,6 +1038,13 @@ async function loadAircraftCatalog() {
     .map((m) => ({ id: m.id, name: m.name, displayName: getAircraftDisplayName(m.name) }));
 
   return passengerAircraftCatalog;
+}
+
+async function pickRandomStarterTypeRating() {
+  const catalog = await loadAircraftCatalog();
+  if (!catalog.length) return 'Cessna 172';
+  const randomAircraft = pickRandom(catalog);
+  return randomAircraft?.displayName || randomAircraft?.name || 'Cessna 172';
 }
 
 async function fetchAircraftOperators(aircraftId) {
@@ -1070,18 +1107,133 @@ function calculateJobPay(distanceNm, aircraftName) {
   return Math.round(pay);
 }
 
-async function generatePassengerJob(index) {
+function getJobRefreshWindowState(profile) {
+  const override = Boolean(profile?.job_refresh_admin_override);
+  const rawUsed = Number(profile?.job_refreshes_used || 0);
+  const used = Number.isFinite(rawUsed) && rawUsed > 0 ? Math.floor(rawUsed) : 0;
+  const startedAtRaw = profile?.job_refresh_window_started_at;
+  const startedAtMs = startedAtRaw ? Date.parse(startedAtRaw) : Number.NaN;
+  const hasValidStart = Number.isFinite(startedAtMs);
+  const windowExpiresAtMs = hasValidStart ? startedAtMs + JOB_MARKET_REFRESH_WINDOW_MS : 0;
+  const windowExpired = hasValidStart ? Date.now() >= windowExpiresAtMs : true;
+
+  const effectiveUsed = windowExpired ? 0 : used;
+  const remaining = override ? JOB_MARKET_REFRESH_LIMIT : Math.max(0, JOB_MARKET_REFRESH_LIMIT - effectiveUsed);
+  return {
+    override,
+    used: effectiveUsed,
+    remaining,
+    windowExpired,
+    windowStartedAt: windowExpired ? null : new Date(startedAtMs).toISOString(),
+    windowExpiresAtMs: windowExpired ? null : windowExpiresAtMs
+  };
+}
+
+function formatRemainingWindow(msRemaining) {
+  if (!Number.isFinite(msRemaining) || msRemaining <= 0) return 'ready now';
+  const hours = Math.floor(msRemaining / (60 * 60 * 1000));
+  const minutes = Math.ceil((msRemaining % (60 * 60 * 1000)) / (60 * 1000));
+  if (hours <= 0) return `${minutes}m`;
+  return `${hours}h ${minutes}m`;
+}
+
+function renderJobRefreshStatus() {
+  const statusEl = document.getElementById('jobRefreshStatus');
+  const refreshBtn = document.getElementById('refreshJobsBtn');
+  if (!statusEl || !refreshBtn || !currentProfile) return;
+
+  const state = getJobRefreshWindowState(currentProfile);
+  if (state.override) {
+    statusEl.innerText = 'Refreshes remaining: Unlimited (admin override enabled)';
+    refreshBtn.disabled = false;
+    return;
+  }
+
+  const remainingText = `Refreshes remaining: ${state.remaining}/${JOB_MARKET_REFRESH_LIMIT}`;
+  if (!state.windowExpiresAtMs) {
+    statusEl.innerText = `${remainingText} (36h window starts on first refresh)`;
+    refreshBtn.disabled = false;
+    return;
+  }
+
+  const timeLeft = Math.max(0, state.windowExpiresAtMs - Date.now());
+  statusEl.innerText = `${remainingText} (resets in ${formatRemainingWindow(timeLeft)})`;
+  refreshBtn.disabled = state.remaining <= 0;
+}
+
+async function persistJobRefreshUsage(used, windowStartedAt) {
+  const refreshUpdates = {
+    job_refreshes_used: used,
+    job_refresh_window_started_at: windowStartedAt
+  };
+
+  let result = await supabaseClient
+    .from('profiles')
+    .update(refreshUpdates)
+    .eq('id', currentProfile.id)
+    .select('*')
+    .single();
+
+  if (result.error && /job_refresh/i.test(result.error.message || '')) {
+    delete refreshUpdates.job_refreshes_used;
+    delete refreshUpdates.job_refresh_window_started_at;
+    result = await supabaseClient
+      .from('profiles')
+      .update(refreshUpdates)
+      .eq('id', currentProfile.id)
+      .select('*')
+      .single();
+  }
+
+  if (result.error) {
+    alert(result.error.message);
+    return false;
+  }
+
+  currentProfile = result.data;
+  return true;
+}
+
+async function requestJobMarketRefresh() {
+  if (!currentProfile) return;
+
+  const state = getJobRefreshWindowState(currentProfile);
+  if (!state.override && state.remaining <= 0) {
+    renderJobRefreshStatus();
+    alert('Refresh limit reached. You can refresh jobs again after the 36-hour window resets.');
+    return;
+  }
+
+  if (!state.override) {
+    const nowIso = new Date().toISOString();
+    const nextUsed = state.windowStartedAt ? state.used + 1 : 1;
+    const nextWindowStart = state.windowStartedAt || nowIso;
+    const persisted = await persistJobRefreshUsage(nextUsed, nextWindowStart);
+    if (!persisted) return;
+  }
+
+  await loadJobMarket();
+}
+
+async function getRatedPassengerAircraft() {
   const models = await loadAircraftCatalog();
+  return models.filter((aircraft) => pilotOwnsTypeForAircraft(currentProfile, aircraft.displayName || aircraft.name));
+}
+
+async function generatePassengerJob(index) {
+  const models = await getRatedPassengerAircraft();
+  if (!models.length) return null;
   const base = (currentProfile?.base_airport || 'WSSS').toUpperCase();
-  const airline = resolveEmployerForBase(base, currentProfile?.employer);
-  if (!airline || !AIRLINE_ROUTE_PROFILES[airline]) return null;
 
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const aircraft = weightedAircraftPick(models);
     if (!aircraft) continue;
 
     const operators = await fetchAircraftOperators(aircraft.id);
-    if (!operators.includes(airline)) continue;
+    const eligibleAirlines = operators.filter((airlineName) => AIRLINE_ROUTE_PROFILES[airlineName]);
+    if (!eligibleAirlines.length) continue;
+    const airline = pickRandom(eligibleAirlines);
+    if (!airline) continue;
 
     const maxRangeNm = getAircraftRangeNm(aircraft.displayName || aircraft.name);
     const airlabsLegs = await fetchAirlabsCandidateLegs({
@@ -1127,7 +1279,10 @@ function renderJobMarket() {
   countEl.innerText = availableJobs.length;
 
   if (!availableJobs.length) {
-    list.innerHTML = '<div class="list-item muted">No jobs available. Press Refresh Jobs.</div>';
+    const hasRatings = Array.isArray(currentProfile?.type_ratings) && currentProfile.type_ratings.length > 0;
+    list.innerHTML = hasRatings
+      ? '<div class="list-item muted">No jobs available for your current type ratings. Try refreshing or buying another type rating.</div>'
+      : '<div class="list-item muted">No type rating found. Buy a type rating in Pilot Shop to unlock jobs.</div>';
     return;
   }
 
@@ -1180,11 +1335,16 @@ async function loadJobMarket() {
   }
 
   renderJobMarket();
+  renderJobRefreshStatus();
 }
 
 function acceptJob(jobId) {
   const job = availableJobs.find((j) => j.id === jobId);
   if (!job) return;
+  if (!pilotOwnsTypeForAircraft(currentProfile, job.aircraft)) {
+    alert('You do not hold the required type rating for this aircraft.');
+    return;
+  }
 
   acceptedJob = job;
   latestGeneratedDispatch = null;
@@ -1449,7 +1609,7 @@ function renderPilotShop() {
   }
 
   const catalog = buildShopCatalog();
-  const owned = (currentProfile?.type_ratings || []).map((x) => x.toLowerCase());
+  const owned = (currentProfile?.type_ratings || []).map((x) => normalizeTypeRatingName(x).toLowerCase());
 
   catalog.forEach((item) => {
     const hasRating = owned.includes(item.displayName.toLowerCase());
@@ -1519,8 +1679,8 @@ async function buyTypeRating(aircraftId) {
   const sizeClass = getAircraftSizeClass(displayName);
   const price = Math.round(BASE_TYPE_RATING_PRICE * getSizeMultiplier(sizeClass) * getPopularityMultiplier(displayName));
 
-  const currentRatings = uniqueStrings(currentProfile.type_ratings || []);
-  if (currentRatings.some((r) => r.toLowerCase() === displayName.toLowerCase())) {
+  const currentRatings = uniqueStrings((currentProfile.type_ratings || []).map((rating) => normalizeTypeRatingName(rating)));
+  if (currentRatings.some((r) => r.toLowerCase() === normalizeTypeRatingName(displayName).toLowerCase())) {
     alert('Type rating already owned.');
     return;
   }
@@ -1532,7 +1692,7 @@ async function buyTypeRating(aircraftId) {
 
   const updates = {
     balance: currentProfile.balance - price,
-    type_ratings: [...currentRatings, displayName]
+    type_ratings: [...currentRatings, normalizeTypeRatingName(displayName)]
   };
 
   const { data, error } = await supabaseClient
@@ -1760,6 +1920,7 @@ async function initializeDashboard() {
   showSection('dashboardSection');
   showPage('overviewPage');
   renderDashboard(currentProfile);
+  renderJobRefreshStatus();
   applyAppearanceFromStorage();
   restoreLiveryCache();
   await loadAircraftCatalog();
@@ -1809,6 +1970,7 @@ window.completePasswordRecovery = completePasswordRecovery;
 window.fetchSimBrief = fetchSimBrief;
 window.dispatchFlight = dispatchFlight;
 window.loadJobMarket = loadJobMarket;
+window.requestJobMarketRefresh = requestJobMarketRefresh;
 window.acceptJob = acceptJob;
 window.generateDispatch = generateDispatch;
 window.buyLicense = buyLicense;
