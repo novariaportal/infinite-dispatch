@@ -105,8 +105,8 @@
     const trackingRowsEl = document.getElementById('trackingRows');
     const plansDumpEl = document.getElementById('plansDump');
     const selectedIdInput = document.getElementById('selectedId');
-    const MIN_DEBUG_CALLSIGN_SUFFIX = 100;
-    const MAX_DEBUG_CALLSIGN_SUFFIX = 999;
+    const MIN_CALLSIGN_SUFFIX = 100;
+    const MAX_CALLSIGN_SUFFIX = 999;
     let currentUser = null;
     let supabaseClient = null;
 
@@ -122,7 +122,7 @@
     }
 
     function generateDebugCallsign() {
-      return `DBG${Math.floor(Math.random() * (MAX_DEBUG_CALLSIGN_SUFFIX - MIN_DEBUG_CALLSIGN_SUFFIX + 1) + MIN_DEBUG_CALLSIGN_SUFFIX)}`;
+      return `DBG${Math.floor(Math.random() * (MAX_CALLSIGN_SUFFIX - MIN_CALLSIGN_SUFFIX + 1) + MIN_CALLSIGN_SUFFIX)}`;
     }
 
     function valueOrDash(value) {
@@ -141,7 +141,7 @@
     }
 
     function ensureClient() {
-      const looksLikePlaceholder = /YOUR_SUPABASE|YOUR_PUBLISHABLE|YOUR_ANON/i.test(`${supabaseUrl} ${supabasePublishableKey}`);
+      const looksLikePlaceholder = /YOUR_SUPABASE|YOUR_PUBLISHABLE/i.test(`${supabaseUrl} ${supabasePublishableKey}`);
       if (!supabaseUrl || !supabasePublishableKey || looksLikePlaceholder) {
         setStatus('Missing Supabase config in public/config.js', true);
         throw new Error('Supabase config missing.');
