@@ -226,7 +226,7 @@ grant select, insert, update, delete on table public.flight_tracking_debug to au
 
 2. Create a second edge function named `if-tracker-debug` using:
    `supabase/functions/if-tracker-debug/index.ts`
-3. Use your debug page (`public/if-tracking-debug-7f3a9c.html`) only with this debug table/function path.
+3. Use your internal debug tracking page only with this debug table/function path.
 4. Do not schedule `if-tracker-debug` in place of production `if-tracker`.
 
 ---

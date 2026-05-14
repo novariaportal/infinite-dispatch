@@ -107,7 +107,7 @@ serve(async () => {
   const sessionsPayload = await sessionsRes.json();
   const liveSessions = sessionsPayload?.result ?? [];
 
-  const flightsByServerType = {};
+  const flightsByServerType: Record<string, any[]> = {};
 
   for (const tracking of sessions) {
     const serverType = tracking.server_type || "casual";
@@ -198,12 +198,13 @@ serve(async () => {
       }
     }
 
+    const updates = isValidatedCompletion
+      ? { status: "completed", updated_at: new Date().toISOString() }
+      : { updated_at: new Date().toISOString() };
+
     await supabase
       .from(DEBUG_TRACKING_TABLE)
-      .update({
-        status: isValidatedCompletion ? "completed" : "enroute",
-        updated_at: new Date().toISOString()
-      })
+      .update(updates)
       .eq("id", tracking.id);
   }
 
