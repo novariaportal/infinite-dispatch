@@ -121,6 +121,10 @@
       return Number.isFinite(value) ? value : null;
     }
 
+    function generateDebugCallsign() {
+      return `DBG${Math.floor(Math.random() * (DEBUG_CALLSIGN_MAX - DEBUG_CALLSIGN_MIN + 1) + DEBUG_CALLSIGN_MIN)}`;
+    }
+
     function setStatus(message, isError = false) {
       statusBarEl.textContent = message;
       statusBarEl.style.color = isError ? '#dc2626' : '';
@@ -153,7 +157,7 @@
           <td>${[row.origin, row.destination].filter(Boolean).join(' → ')}</td>
           <td>${row.status || ''}</td>
           <td>${row.server_type || ''}</td>
-          <td>${row.last_lat ?? ''}, ${row.last_lng ?? ''} / ${row.last_alt ?? ''} / ${row.last_speed ?? ''}</td>
+          <td>Lat/Lng: ${row.last_lat ?? ''}, ${row.last_lng ?? ''} | Alt: ${row.last_alt ?? ''} | Speed: ${row.last_speed ?? ''}</td>
           <td>${row.created_at ? new Date(row.created_at).toLocaleString() : ''}</td>
           <td>${row.updated_at ? new Date(row.updated_at).toLocaleString() : ''}</td>
         `;
@@ -218,7 +222,7 @@
         const client = ensureClient();
         const payload = {
           user_id: currentUser.id,
-          callsign: safeUpper('callsign') || `DBG${Math.floor(Math.random() * (DEBUG_CALLSIGN_MAX - DEBUG_CALLSIGN_MIN + 1) + DEBUG_CALLSIGN_MIN)}`,
+          callsign: safeUpper('callsign') || generateDebugCallsign(),
           origin: safeUpper('origin') || null,
           destination: safeUpper('destination') || null,
           status: 'enroute',
@@ -238,10 +242,10 @@
       if (!rowId) return setStatus('Provide/select a tracking row ID.', true);
       try {
         const client = ensureClient();
+        const callsign = safeUpper('callsign');
+        const origin = safeUpper('origin');
+        const destination = safeUpper('destination');
         const updates = {
-          callsign: safeUpper('callsign') || null,
-          origin: safeUpper('origin') || null,
-          destination: safeUpper('destination') || null,
           status: document.getElementById('status').value || 'enroute',
           server_type: document.getElementById('serverType').value || 'casual',
           last_lat: readNumber('lastLat'),
@@ -250,6 +254,9 @@
           last_speed: readNumber('lastSpeed'),
           updated_at: new Date().toISOString()
         };
+        if (callsign) updates.callsign = callsign;
+        if (origin) updates.origin = origin;
+        if (destination) updates.destination = destination;
         const { error } = await client
           .from('flight_tracking')
           .update(updates)
