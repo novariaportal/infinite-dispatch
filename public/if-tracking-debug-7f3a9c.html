@@ -125,6 +125,10 @@
       return `DBG${Math.floor(Math.random() * (DEBUG_CALLSIGN_MAX - DEBUG_CALLSIGN_MIN + 1) + DEBUG_CALLSIGN_MIN)}`;
     }
 
+    function valueOrDash(value) {
+      return value ?? '—';
+    }
+
     function setStatus(message, isError = false) {
       statusBarEl.textContent = message;
       statusBarEl.style.color = isError ? '#dc2626' : '';
@@ -157,7 +161,7 @@
           <td>${[row.origin, row.destination].filter(Boolean).join(' → ')}</td>
           <td>${row.status || ''}</td>
           <td>${row.server_type || ''}</td>
-          <td>Lat/Lng: ${row.last_lat ?? ''}, ${row.last_lng ?? ''} | Alt: ${row.last_alt ?? ''} | Speed: ${row.last_speed ?? ''}</td>
+          <td>Lat/Lng: ${valueOrDash(row.last_lat)}, ${valueOrDash(row.last_lng)} | Alt: ${valueOrDash(row.last_alt)} | Speed: ${valueOrDash(row.last_speed)}</td>
           <td>${row.created_at ? new Date(row.created_at).toLocaleString() : ''}</td>
           <td>${row.updated_at ? new Date(row.updated_at).toLocaleString() : ''}</td>
         `;
@@ -251,8 +255,7 @@
           last_lat: readNumber('lastLat'),
           last_lng: readNumber('lastLng'),
           last_alt: readNumber('lastAlt'),
-          last_speed: readNumber('lastSpeed'),
-          updated_at: new Date().toISOString()
+          last_speed: readNumber('lastSpeed')
         };
         if (callsign) updates.callsign = callsign;
         if (origin) updates.origin = origin;
