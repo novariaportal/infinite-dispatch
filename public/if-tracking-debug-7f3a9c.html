@@ -22,6 +22,7 @@
     <section class="card">
       <h1>Infinite Flight Tracking Debug</h1>
       <p class="muted">Unlisted internal page. Use only for testing tracking rows and edge-function outputs.</p>
+      <p class="muted mono">This page writes to debug table: <strong>flight_tracking_debug</strong> (not production tracking data).</p>
       <p class="warn">No menu link exists for this page. Access requires knowing this exact URL.</p>
     </section>
 
@@ -107,6 +108,7 @@
     const selectedIdInput = document.getElementById('selectedId');
     const MIN_CALLSIGN_SUFFIX = 100;
     const MAX_CALLSIGN_SUFFIX = 999;
+    const DEBUG_TRACKING_TABLE = 'flight_tracking_debug';
     let currentUser = null;
     let supabaseClient = null;
 
@@ -179,7 +181,7 @@
       if (!currentUser) return;
       const client = ensureClient();
       const { data, error } = await client
-        .from('flight_tracking')
+        .from(DEBUG_TRACKING_TABLE)
         .select('*')
         .eq('user_id', currentUser.id)
         .order('created_at', { ascending: false })
@@ -233,7 +235,7 @@
           status: 'enroute',
           server_type: document.getElementById('serverType').value || 'casual'
         };
-        const { error } = await client.from('flight_tracking').insert([payload]);
+        const { error } = await client.from(DEBUG_TRACKING_TABLE).insert([payload]);
         if (error) throw error;
         await loadTrackingRows();
       } catch (err) {
@@ -262,7 +264,7 @@
         if (origin) updates.origin = origin;
         if (destination) updates.destination = destination;
         const { error } = await client
-          .from('flight_tracking')
+          .from(DEBUG_TRACKING_TABLE)
           .update(updates)
           .eq('id', rowId)
           .eq('user_id', currentUser.id);
@@ -280,7 +282,7 @@
       try {
         const client = ensureClient();
         const { error } = await client
-          .from('flight_tracking')
+          .from(DEBUG_TRACKING_TABLE)
           .delete()
           .eq('id', rowId)
           .eq('user_id', currentUser.id);
