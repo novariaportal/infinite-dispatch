@@ -360,6 +360,7 @@ function getCompatibleEmployersForBase(baseAirport) {
 }
 
 function resolveEmployerForBase(baseAirport, preferredEmployer = null) {
+  if (typeof preferredEmployer === 'string' && preferredEmployer.trim() === '') return '';
   const compatibleEmployers = getCompatibleEmployersForBase(baseAirport);
   const normalizedPreferred = normalizeAirlineName(preferredEmployer);
   if (normalizedPreferred && compatibleEmployers.includes(normalizedPreferred)) return normalizedPreferred;
