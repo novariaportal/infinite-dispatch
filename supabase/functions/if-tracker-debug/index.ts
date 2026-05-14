@@ -169,12 +169,7 @@ serve(async () => {
 
     let isValidatedCompletion = false;
 
-    if (
-      hasSeenLivePosition &&
-      tracking.destination &&
-      tracking.last_lat != null &&
-      tracking.last_lng != null
-    ) {
+    if (hasSeenLivePosition && tracking.destination) {
       const destinationAirport = AIRPORT_COORDS[String(tracking.destination || "").toUpperCase()];
 
       if (
