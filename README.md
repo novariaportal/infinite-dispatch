@@ -190,6 +190,45 @@ In **Edge Functions → if-tracker → Schedule**, set:
 
 The tracker validates completion (destination proximity + landing profile) before marking a flight completed and awarding pay/hours.
 
+### Optional: Isolated Debug Tracking (Recommended)
+Use a completely separate table + function so debug runs never touch real user tracking rows.
+
+1. Create a debug table:
+```sql
+create table if not exists public.flight_tracking_debug (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  callsign text,
+  origin text,
+  destination text,
+  status text default 'enroute',
+  server_type text default 'casual',
+  last_lat double precision,
+  last_lng double precision,
+  last_alt double precision,
+  last_speed double precision,
+  updated_at timestamp with time zone default now(),
+  created_at timestamp with time zone default now()
+);
+
+alter table public.flight_tracking_debug enable row level security;
+
+create policy "Users can read own debug tracking"
+on public.flight_tracking_debug for select
+using (auth.uid() = user_id);
+
+create policy "Users can insert own debug tracking"
+on public.flight_tracking_debug for insert
+with check (auth.uid() = user_id);
+
+grant select, insert, update, delete on table public.flight_tracking_debug to authenticated;
+```
+
+2. Create a second edge function named `if-tracker-debug` using:
+   `supabase/functions/if-tracker-debug/index.ts`
+3. Use your debug page (`public/if-tracking-debug-7f3a9c.html`) only with this debug table/function path.
+4. Do not schedule `if-tracker-debug` in place of production `if-tracker`.
+
 ---
 
 ## 🛫 AirLabs Airline Routes Integration (Supabase Edge Function)
