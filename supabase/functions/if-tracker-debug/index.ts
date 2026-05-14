@@ -73,7 +73,7 @@ function haversineNm(
   return km * NM_PER_KM;
 }
 
-serve(async () => {
+serve(async (_request) => {
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -145,6 +145,13 @@ serve(async () => {
       const serverType = tracking.server_type || "casual";
       const flights = flightsByServerType[serverType] || [];
       const callsign = tracking.callsign?.toUpperCase();
+      if (!callsign) {
+        await supabase
+          .from(DEBUG_TRACKING_TABLE)
+          .update({ updated_at: new Date().toISOString() })
+          .eq("id", tracking.id);
+        continue;
+      }
       const match = flights.find((flight) =>
         flight?.callsign?.toUpperCase() === callsign
       );
@@ -210,6 +217,7 @@ serve(async () => {
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return new Response(JSON.stringify({ error: message }), { status: 500 });
+    console.error("if-tracker-debug failed:", message);
+    return new Response(JSON.stringify({ error: "Internal error" }), { status: 500 });
   }
 });

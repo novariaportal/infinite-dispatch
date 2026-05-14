@@ -230,6 +230,7 @@ grant select, insert, update, delete on table public.flight_tracking_debug to au
    - Open `supabase/functions/if-tracker-debug/index.ts` in this repo and copy-paste its full contents into the dashboard editor
    - Deploy it
 3. Use your internal debug tracking page only with this debug table/function path.
+   - Invoke the `if-tracker-debug` function URL when you want to process debug rows.
 4. Do not schedule `if-tracker-debug` in place of production `if-tracker`.
 
 ---
