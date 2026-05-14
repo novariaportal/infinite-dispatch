@@ -83,7 +83,7 @@
               <th>route</th>
               <th>status</th>
               <th>server</th>
-              <th>position/speed</th>
+              <th>position/alt/speed</th>
               <th>created</th>
               <th>updated</th>
             </tr>
@@ -95,7 +95,7 @@
     </section>
   </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.8"></script>
   <script src="config.js"></script>
   <script>
     const supabaseUrl = window.SUPABASE_URL || '';
@@ -105,6 +105,8 @@
     const trackingRowsEl = document.getElementById('trackingRows');
     const plansDumpEl = document.getElementById('plansDump');
     const selectedIdInput = document.getElementById('selectedId');
+    const DEBUG_CALLSIGN_MIN = 100;
+    const DEBUG_CALLSIGN_MAX = 999;
     let currentUser = null;
     let supabaseClient = null;
 
@@ -151,7 +153,7 @@
           <td>${[row.origin, row.destination].filter(Boolean).join(' → ')}</td>
           <td>${row.status || ''}</td>
           <td>${row.server_type || ''}</td>
-          <td>${row.last_lat ?? ''}, ${row.last_lng ?? ''} / ${row.last_speed ?? ''}</td>
+          <td>${row.last_lat ?? ''}, ${row.last_lng ?? ''} / ${row.last_alt ?? ''} / ${row.last_speed ?? ''}</td>
           <td>${row.created_at ? new Date(row.created_at).toLocaleString() : ''}</td>
           <td>${row.updated_at ? new Date(row.updated_at).toLocaleString() : ''}</td>
         `;
@@ -216,7 +218,7 @@
         const client = ensureClient();
         const payload = {
           user_id: currentUser.id,
-          callsign: safeUpper('callsign') || `DBG${Math.floor(Math.random() * 900 + 100)}`,
+          callsign: safeUpper('callsign') || `DBG${Math.floor(Math.random() * (DEBUG_CALLSIGN_MAX - DEBUG_CALLSIGN_MIN + 1) + DEBUG_CALLSIGN_MIN)}`,
           origin: safeUpper('origin') || null,
           destination: safeUpper('destination') || null,
           status: 'enroute',
@@ -237,9 +239,9 @@
       try {
         const client = ensureClient();
         const updates = {
-          callsign: safeUpper('callsign') || undefined,
-          origin: safeUpper('origin') || undefined,
-          destination: safeUpper('destination') || undefined,
+          callsign: safeUpper('callsign') || null,
+          origin: safeUpper('origin') || null,
+          destination: safeUpper('destination') || null,
           status: document.getElementById('status').value || 'enroute',
           server_type: document.getElementById('serverType').value || 'casual',
           last_lat: readNumber('lastLat'),
@@ -248,7 +250,6 @@
           last_speed: readNumber('lastSpeed'),
           updated_at: new Date().toISOString()
         };
-        Object.keys(updates).forEach((key) => updates[key] === undefined && delete updates[key]);
         const { error } = await client
           .from('flight_tracking')
           .update(updates)
