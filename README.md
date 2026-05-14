@@ -224,8 +224,11 @@ with check (auth.uid() = user_id);
 grant select, insert, update, delete on table public.flight_tracking_debug to authenticated;
 ```
 
-2. Create a second edge function named `if-tracker-debug` using:
-   `supabase/functions/if-tracker-debug/index.ts`
+2. Create a second edge function in **Supabase Dashboard → Edge Functions**:
+   - Click **Create a new function**
+   - Name it `if-tracker-debug`
+   - Replace its code with `supabase/functions/if-tracker-debug/index.ts`
+   - Deploy it
 3. Use your internal debug tracking page only with this debug table/function path.
 4. Do not schedule `if-tracker-debug` in place of production `if-tracker`.
 
