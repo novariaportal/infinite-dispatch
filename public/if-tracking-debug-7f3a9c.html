@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <title>IF Tracking Debug</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    body { padding: 1rem; }
+    .stack { display: grid; gap: 0.75rem; }
+    .grid-2 { display: grid; gap: 0.75rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+    .warn { color: #b45309; font-weight: 600; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid rgba(148, 163, 184, 0.35); padding: 0.45rem; text-align: left; font-size: 0.9rem; vertical-align: top; }
+    tbody tr:hover { background: rgba(148, 163, 184, 0.12); }
+  </style>
+</head>
+<body>
+  <main class="stack">
+    <section class="card">
+      <h1>Infinite Flight Tracking Debug</h1>
+      <p class="muted">Unlisted internal page. Use only for testing tracking rows and edge-function outputs.</p>
+      <p class="warn">No menu link exists for this page. Access requires knowing this exact URL.</p>
+    </section>
+
+    <section class="card stack">
+      <h2>Auth</h2>
+      <div class="grid-2">
+        <input type="email" id="email" placeholder="Email">
+        <input type="password" id="password" placeholder="Password">
+      </div>
+      <div class="input-group">
+        <button id="signInBtn">Sign In</button>
+        <button id="signOutBtn" class="danger">Sign Out</button>
+      </div>
+      <div id="authState" class="mono muted">Not signed in.</div>
+    </section>
+
+    <section class="card stack">
+      <h2>Create / Update Tracking Row</h2>
+      <div class="grid-2">
+        <input type="text" id="callsign" placeholder="Callsign (e.g. DAL123)">
+        <input type="text" id="origin" placeholder="Origin ICAO (e.g. KJFK)">
+        <input type="text" id="destination" placeholder="Destination ICAO (e.g. KBOS)">
+        <select id="serverType">
+          <option value="casual">Casual</option>
+          <option value="training">Training</option>
+          <option value="expert">Expert</option>
+        </select>
+        <select id="status">
+          <option value="enroute">enroute</option>
+          <option value="completed">completed</option>
+          <option value="cancelled">cancelled</option>
+        </select>
+        <input type="text" id="selectedId" placeholder="Tracking row ID for update/delete">
+        <input type="number" id="lastLat" step="0.000001" placeholder="last_lat (optional)">
+        <input type="number" id="lastLng" step="0.000001" placeholder="last_lng (optional)">
+        <input type="number" id="lastAlt" step="1" placeholder="last_alt (optional)">
+        <input type="number" id="lastSpeed" step="1" placeholder="last_speed (optional)">
+      </div>
+      <div class="input-group">
+        <button id="createBtn">Create Enroute Session</button>
+        <button id="updateBtn">Update Selected Row</button>
+        <button id="deleteBtn" class="danger">Delete Selected Row</button>
+      </div>
+    </section>
+
+    <section class="card stack">
+      <h2>Data</h2>
+      <div class="input-group">
+        <button id="refreshBtn">Refresh Tracking</button>
+        <button id="plansBtn">Load Latest Flight Plans</button>
+      </div>
+      <div id="statusBar" class="mono muted">Ready.</div>
+      <div style="overflow:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>id</th>
+              <th>callsign</th>
+              <th>route</th>
+              <th>status</th>
+              <th>server</th>
+              <th>position/speed</th>
+              <th>created</th>
+              <th>updated</th>
+            </tr>
+          </thead>
+          <tbody id="trackingRows"></tbody>
+        </table>
+      </div>
+      <pre id="plansDump" class="mono">Flight plans output appears here.</pre>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script>
+    const supabaseUrl = window.SUPABASE_URL || '';
+    const supabasePublishableKey = window.SUPABASE_PUBLISHABLE_KEY || '';
+    const authStateEl = document.getElementById('authState');
+    const statusBarEl = document.getElementById('statusBar');
+    const trackingRowsEl = document.getElementById('trackingRows');
+    const plansDumpEl = document.getElementById('plansDump');
+    const selectedIdInput = document.getElementById('selectedId');
+    let currentUser = null;
+    let supabaseClient = null;
+
+    function safeUpper(inputId) {
+      return (document.getElementById(inputId).value || '').trim().toUpperCase();
+    }
+
+    function readNumber(inputId) {
+      const raw = document.getElementById(inputId).value;
+      if (raw === '' || raw === null || raw === undefined) return null;
+      const value = Number(raw);
+      return Number.isFinite(value) ? value : null;
+    }
+
+    function setStatus(message, isError = false) {
+      statusBarEl.textContent = message;
+      statusBarEl.style.color = isError ? '#dc2626' : '';
+    }
+
+    function setAuthState() {
+      authStateEl.textContent = currentUser
+        ? `Signed in as ${currentUser.email} (${currentUser.id})`
+        : 'Not signed in.';
+    }
+
+    function ensureClient() {
+      if (!supabaseUrl || !supabasePublishableKey || supabaseUrl.includes('YOUR_SUPABASE')) {
+        setStatus('Missing Supabase config in public/config.js', true);
+        throw new Error('Supabase config missing.');
+      }
+      if (!supabaseClient) {
+        supabaseClient = window.supabase.createClient(supabaseUrl, supabasePublishableKey);
+      }
+      return supabaseClient;
+    }
+
+    function renderTrackingRows(rows) {
+      trackingRowsEl.innerHTML = '';
+      for (const row of rows) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><button class="mono" data-id="${row.id}">${row.id}</button></td>
+          <td>${row.callsign || ''}</td>
+          <td>${[row.origin, row.destination].filter(Boolean).join(' → ')}</td>
+          <td>${row.status || ''}</td>
+          <td>${row.server_type || ''}</td>
+          <td>${row.last_lat ?? ''}, ${row.last_lng ?? ''} / ${row.last_speed ?? ''}</td>
+          <td>${row.created_at ? new Date(row.created_at).toLocaleString() : ''}</td>
+          <td>${row.updated_at ? new Date(row.updated_at).toLocaleString() : ''}</td>
+        `;
+        trackingRowsEl.appendChild(tr);
+      }
+      trackingRowsEl.querySelectorAll('button[data-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          selectedIdInput.value = btn.dataset.id;
+        });
+      });
+    }
+
+    async function loadTrackingRows() {
+      if (!currentUser) return;
+      const client = ensureClient();
+      const { data, error } = await client
+        .from('flight_tracking')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (error) {
+        setStatus(`Tracking query failed: ${error.message}`, true);
+        return;
+      }
+      renderTrackingRows(data || []);
+      setStatus(`Loaded ${data?.length || 0} tracking rows.`);
+    }
+
+    async function signIn() {
+      try {
+        const client = ensureClient();
+        const email = (document.getElementById('email').value || '').trim();
+        const password = document.getElementById('password').value || '';
+        const { data, error } = await client.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        currentUser = data.user;
+        setAuthState();
+        await loadTrackingRows();
+      } catch (err) {
+        setStatus(`Sign in failed: ${err.message}`, true);
+      }
+    }
+
+    async function signOut() {
+      try {
+        const client = ensureClient();
+        await client.auth.signOut();
+        currentUser = null;
+        trackingRowsEl.innerHTML = '';
+        plansDumpEl.textContent = 'Flight plans output appears here.';
+        setAuthState();
+        setStatus('Signed out.');
+      } catch (err) {
+        setStatus(`Sign out failed: ${err.message}`, true);
+      }
+    }
+
+    async function createSession() {
+      if (!currentUser) return setStatus('Sign in first.', true);
+      try {
+        const client = ensureClient();
+        const payload = {
+          user_id: currentUser.id,
+          callsign: safeUpper('callsign') || `DBG${Math.floor(Math.random() * 900 + 100)}`,
+          origin: safeUpper('origin') || null,
+          destination: safeUpper('destination') || null,
+          status: 'enroute',
+          server_type: document.getElementById('serverType').value || 'casual'
+        };
+        const { error } = await client.from('flight_tracking').insert([payload]);
+        if (error) throw error;
+        await loadTrackingRows();
+      } catch (err) {
+        setStatus(`Create failed: ${err.message}`, true);
+      }
+    }
+
+    async function updateSession() {
+      if (!currentUser) return setStatus('Sign in first.', true);
+      const rowId = (selectedIdInput.value || '').trim();
+      if (!rowId) return setStatus('Provide/select a tracking row ID.', true);
+      try {
+        const client = ensureClient();
+        const updates = {
+          callsign: safeUpper('callsign') || undefined,
+          origin: safeUpper('origin') || undefined,
+          destination: safeUpper('destination') || undefined,
+          status: document.getElementById('status').value || 'enroute',
+          server_type: document.getElementById('serverType').value || 'casual',
+          last_lat: readNumber('lastLat'),
+          last_lng: readNumber('lastLng'),
+          last_alt: readNumber('lastAlt'),
+          last_speed: readNumber('lastSpeed'),
+          updated_at: new Date().toISOString()
+        };
+        Object.keys(updates).forEach((key) => updates[key] === undefined && delete updates[key]);
+        const { error } = await client
+          .from('flight_tracking')
+          .update(updates)
+          .eq('id', rowId)
+          .eq('user_id', currentUser.id);
+        if (error) throw error;
+        await loadTrackingRows();
+      } catch (err) {
+        setStatus(`Update failed: ${err.message}`, true);
+      }
+    }
+
+    async function deleteSession() {
+      if (!currentUser) return setStatus('Sign in first.', true);
+      const rowId = (selectedIdInput.value || '').trim();
+      if (!rowId) return setStatus('Provide/select a tracking row ID.', true);
+      try {
+        const client = ensureClient();
+        const { error } = await client
+          .from('flight_tracking')
+          .delete()
+          .eq('id', rowId)
+          .eq('user_id', currentUser.id);
+        if (error) throw error;
+        await loadTrackingRows();
+      } catch (err) {
+        setStatus(`Delete failed: ${err.message}`, true);
+      }
+    }
+
+    async function loadPlans() {
+      if (!currentUser) return setStatus('Sign in first.', true);
+      try {
+        const client = ensureClient();
+        const { data, error } = await client
+          .from('flight_plans')
+          .select('id, flight_number, airline_icao, origin, destination, aircraft, created_at')
+          .eq('user_id', currentUser.id)
+          .order('created_at', { ascending: false })
+          .limit(10);
+        if (error) throw error;
+        plansDumpEl.textContent = JSON.stringify(data || [], null, 2);
+        setStatus(`Loaded ${data?.length || 0} flight plans.`);
+      } catch (err) {
+        setStatus(`Flight plan query failed: ${err.message}`, true);
+      }
+    }
+
+    async function bootstrap() {
+      try {
+        const client = ensureClient();
+        const { data } = await client.auth.getUser();
+        currentUser = data?.user || null;
+        setAuthState();
+        if (currentUser) await loadTrackingRows();
+      } catch (err) {
+        setStatus(err.message, true);
+      }
+    }
+
+    document.getElementById('signInBtn').addEventListener('click', signIn);
+    document.getElementById('signOutBtn').addEventListener('click', signOut);
+    document.getElementById('refreshBtn').addEventListener('click', loadTrackingRows);
+    document.getElementById('createBtn').addEventListener('click', createSession);
+    document.getElementById('updateBtn').addEventListener('click', updateSession);
+    document.getElementById('deleteBtn').addEventListener('click', deleteSession);
+    document.getElementById('plansBtn').addEventListener('click', loadPlans);
+    bootstrap();
+  </script>
+</body>
+</html>
