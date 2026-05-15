@@ -25,7 +25,8 @@ const DEFAULT_EMPLOYER_OPTIONS = [
 ];
 const PROFILE_SELECT_BASE_FIELDS = 'id, username, hours, job_slots, license, position, pay_multiplier, type_ratings, balance, employer, base_airport';
 const PROFILE_SELECT_REFRESH_FIELDS = 'job_refreshes_used, job_refresh_window_started_at, job_refresh_admin_override';
-const PROFILE_SELECT_ALL_FIELDS = `${PROFILE_SELECT_BASE_FIELDS}, ${PROFILE_SELECT_REFRESH_FIELDS}`;
+const PROFILE_SELECT_IDENTITY_FIELDS = 'discourse_username, ifc_link_status, ifc_link_code, ifc_link_verified_at, ifc_link_last_checked_at, ifc_link_last_error';
+const PROFILE_SELECT_ALL_FIELDS = `${PROFILE_SELECT_BASE_FIELDS}, ${PROFILE_SELECT_REFRESH_FIELDS}, ${PROFILE_SELECT_IDENTITY_FIELDS}`;
 
 function formatRatings(raw) {
   return (raw || '')
@@ -71,6 +72,13 @@ function isMissingJobRefreshColumnError(error) {
   return /job_refresh/i.test(message);
 }
 
+function isMissingIdentityColumnError(error) {
+  const code = String(error?.code || '').trim();
+  if (code === '42703' || code === 'PGRST204') return true;
+  const message = String(error?.message || '');
+  return /ifc_link|discourse_username|identity_link/i.test(message);
+}
+
 function withRefreshDefaults(profile) {
   const rawRefreshCount = Number(profile?.job_refreshes_used);
   return {
@@ -81,13 +89,33 @@ function withRefreshDefaults(profile) {
   };
 }
 
+function withIdentityDefaults(profile) {
+  const rawStatus = String(profile?.ifc_link_status || 'unlinked').trim().toLowerCase();
+  const allowed = ['unlinked', 'pending', 'verified', 'failed'];
+  return {
+    ...profile,
+    discourse_username: String(profile?.discourse_username || '').trim(),
+    ifc_link_status: allowed.includes(rawStatus) ? rawStatus : 'unlinked',
+    ifc_link_code: String(profile?.ifc_link_code || '').trim(),
+    ifc_link_verified_at: profile?.ifc_link_verified_at ?? null,
+    ifc_link_last_checked_at: profile?.ifc_link_last_checked_at ?? null,
+    ifc_link_last_error: String(profile?.ifc_link_last_error || '').trim()
+  };
+}
+
 async function runProfileSelectWithFallback(buildQuery) {
   let result = await buildQuery(PROFILE_SELECT_ALL_FIELDS);
+  if (result.error && isMissingJobRefreshColumnError(result.error)) {
+    result = await buildQuery(`${PROFILE_SELECT_BASE_FIELDS}, ${PROFILE_SELECT_IDENTITY_FIELDS}`);
+  }
+  if (result.error && isMissingIdentityColumnError(result.error)) {
+    result = await buildQuery(`${PROFILE_SELECT_BASE_FIELDS}, ${PROFILE_SELECT_REFRESH_FIELDS}`);
+  }
   if (result.error && isMissingJobRefreshColumnError(result.error)) {
     result = await buildQuery(PROFILE_SELECT_BASE_FIELDS);
   }
   if (!result.error) {
-    result.data = (result.data || []).map((profile) => withRefreshDefaults(profile));
+    result.data = (result.data || []).map((profile) => withIdentityDefaults(withRefreshDefaults(profile)));
   }
   return result;
 }
@@ -102,6 +130,7 @@ function profileCard(profile) {
   const employerOptions = getEmployerOptions(profile);
   const refreshesUsed = Number.isFinite(Number(profile.job_refreshes_used)) ? Number(profile.job_refreshes_used) : 0;
   const refreshWindowStart = profile.job_refresh_window_started_at || '';
+  const identityStatus = profile.ifc_link_status || 'unlinked';
 
   wrap.innerHTML = `
     <div class="list-row"><strong>${profileName}</strong><span>${profileId}</span></div>
@@ -135,6 +164,20 @@ function profileCard(profile) {
       <input id="refreshOverride_${profile.id}" type="checkbox" ${profile.job_refresh_admin_override ? 'checked' : ''}>
       Admin override refresh limit
     </label>
+    <label>Discourse Username</label>
+    <input id="discourseUsername_${profile.id}" type="text" value="${escapeHtml(profile.discourse_username || '')}">
+    <label>IFC Link Status</label>
+    <select id="ifcStatus_${profile.id}">
+      ${buildSelectOptions(['unlinked', 'pending', 'verified', 'failed'], identityStatus)}
+    </select>
+    <label>IFC Link Code</label>
+    <input id="ifcCode_${profile.id}" type="text" value="${escapeHtml(profile.ifc_link_code || '')}">
+    <label>IFC Verified At (ISO or blank)</label>
+    <input id="ifcVerifiedAt_${profile.id}" type="text" value="${escapeHtml(profile.ifc_link_verified_at || '')}">
+    <label>IFC Last Checked At (ISO or blank)</label>
+    <input id="ifcCheckedAt_${profile.id}" type="text" value="${escapeHtml(profile.ifc_link_last_checked_at || '')}">
+    <label>IFC Last Error</label>
+    <input id="ifcLastError_${profile.id}" type="text" value="${escapeHtml(profile.ifc_link_last_error || '')}">
     <button onclick="saveProfile('${profile.id}')">Save Profile</button>
   `;
   return wrap;
@@ -215,7 +258,13 @@ async function saveProfile(profileId) {
     base_airport: (document.getElementById(`base_${profileId}`).value || '').trim().toUpperCase(),
     job_refreshes_used: Math.max(0, Number(document.getElementById(`refreshes_${profileId}`).value || 0)),
     job_refresh_window_started_at: (document.getElementById(`refreshWindow_${profileId}`).value || '').trim() || null,
-    job_refresh_admin_override: Boolean(document.getElementById(`refreshOverride_${profileId}`).checked)
+    job_refresh_admin_override: Boolean(document.getElementById(`refreshOverride_${profileId}`).checked),
+    discourse_username: (document.getElementById(`discourseUsername_${profileId}`).value || '').trim(),
+    ifc_link_status: (document.getElementById(`ifcStatus_${profileId}`).value || 'unlinked').trim(),
+    ifc_link_code: (document.getElementById(`ifcCode_${profileId}`).value || '').trim() || null,
+    ifc_link_verified_at: (document.getElementById(`ifcVerifiedAt_${profileId}`).value || '').trim() || null,
+    ifc_link_last_checked_at: (document.getElementById(`ifcCheckedAt_${profileId}`).value || '').trim() || null,
+    ifc_link_last_error: (document.getElementById(`ifcLastError_${profileId}`).value || '').trim() || null
   };
 
   let { error } = await supabaseClient
@@ -227,6 +276,19 @@ async function saveProfile(profileId) {
     delete updates.job_refreshes_used;
     delete updates.job_refresh_window_started_at;
     delete updates.job_refresh_admin_override;
+    ({ error } = await supabaseClient
+      .from('profiles')
+      .update(updates)
+      .eq('id', profileId));
+  }
+
+  if (error && isMissingIdentityColumnError(error)) {
+    delete updates.discourse_username;
+    delete updates.ifc_link_status;
+    delete updates.ifc_link_code;
+    delete updates.ifc_link_verified_at;
+    delete updates.ifc_link_last_checked_at;
+    delete updates.ifc_link_last_error;
     ({ error } = await supabaseClient
       .from('profiles')
       .update(updates)

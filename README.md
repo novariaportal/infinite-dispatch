@@ -59,6 +59,12 @@ create table if not exists public.profiles (
   job_refreshes_used integer not null default 0,
   job_refresh_window_started_at timestamp with time zone,
   job_refresh_admin_override boolean not null default false,
+  discourse_username text,
+  ifc_link_status text not null default 'unlinked',
+  ifc_link_code text,
+  ifc_link_verified_at timestamp with time zone,
+  ifc_link_last_checked_at timestamp with time zone,
+  ifc_link_last_error text,
   created_at timestamp with time zone default now()
 );
 
@@ -86,6 +92,9 @@ create table if not exists public.flight_tracking (
   last_lng double precision,
   last_alt double precision,
   last_speed double precision,
+  identity_link_status text,
+  identity_link_username text,
+  identity_link_verified_at timestamp with time zone,
   updated_at timestamp with time zone default now(),
   created_at timestamp with time zone default now()
 );
@@ -128,6 +137,21 @@ grant usage on schema public to authenticated;
 grant select, insert, update, delete on table public.profiles to authenticated;
 grant select, insert, update, delete on table public.flight_plans to authenticated;
 grant select, insert, update, delete on table public.flight_tracking to authenticated;
+```
+
+If your tables already exist, apply these migration-safe updates:
+
+```sql
+alter table public.profiles add column if not exists discourse_username text;
+alter table public.profiles add column if not exists ifc_link_status text not null default 'unlinked';
+alter table public.profiles add column if not exists ifc_link_code text;
+alter table public.profiles add column if not exists ifc_link_verified_at timestamp with time zone;
+alter table public.profiles add column if not exists ifc_link_last_checked_at timestamp with time zone;
+alter table public.profiles add column if not exists ifc_link_last_error text;
+
+alter table public.flight_tracking add column if not exists identity_link_status text;
+alter table public.flight_tracking add column if not exists identity_link_username text;
+alter table public.flight_tracking add column if not exists identity_link_verified_at timestamp with time zone;
 ```
 
 3. In **Auth → Providers**, enable **Email**.
@@ -189,6 +213,7 @@ In **Edge Functions → if-tracker → Schedule**, set:
 (Every 2 minutes)
 
 The tracker validates completion (destination proximity + landing profile) before marking a flight completed and awarding pay/hours.
+Tracking rows can also include identity-link metadata (`identity_link_*`) captured from the pilot profile at dispatch time.
 
 ### Optional: Isolated Debug Tracking (Recommended)
 Use a completely separate table + function so debug runs never touch real user tracking rows.

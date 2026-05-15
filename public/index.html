@@ -169,6 +169,16 @@
                 <p class="muted">Follow this quick flow to complete your first validated flight:</p>
                 <ul id="onboardingChecklist" class="onboarding-list"></ul>
               </div>
+              <div class="card">
+                <h3>Discourse / IFC Account Link</h3>
+                <p class="muted">Link your IFC account by placing a verification code in your IFC profile bio, then run verification.</p>
+                <div class="input-group">
+                  <input type="text" id="discourseUsernameInput" placeholder="IFC username">
+                  <button id="startDiscourseLinkBtn" onclick="startDiscourseVerificationFlow()">Start Link Verification</button>
+                  <button id="checkDiscourseLinkBtn" onclick="checkDiscourseVerificationFlow()">Check Verification</button>
+                </div>
+                <p id="discourseLinkStatus" class="muted">Not linked yet.</p>
+              </div>
             </section>
 
             <section id="jobsPage" class="page">
