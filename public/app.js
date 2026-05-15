@@ -21,6 +21,8 @@ const MAX_CALLSIGN_LENGTH = 12;
 const NM_PER_KM = 0.539957;
 const MIN_VALID_TRACKING_SPEED_KTS = 40;
 const NEW_PILOT_HOURS_THRESHOLD = 5;
+const IFC_DISCOURSE_BASE_URL = 'https://community.infiniteflight.com';
+const IFC_VERIFY_CODE_PREFIX = 'ID-LINK-';
 const AIRLABS_MAX_LIMIT = 50;
 const AIRLABS_FETCH_MAX_PAGES = 3;
 const AIRLABS_MAX_CANDIDATES = 40;
@@ -320,6 +322,90 @@ function isMissingJobRefreshColumnError(error) {
   if (code === '42703' || code === 'PGRST204') return true;
   const message = String(error?.message || '');
   return /job_refresh/i.test(message);
+}
+
+function isMissingIdentityColumnError(error) {
+  const code = String(error?.code || '').trim();
+  if (code === '42703' || code === 'PGRST204') return true;
+  const message = String(error?.message || '');
+  return /ifc_link|discourse_username|identity_link/i.test(message);
+}
+
+function withIdentityDefaults(profile) {
+  const normalizedUsername = String(profile?.discourse_username || '').trim() || null;
+  const rawStatus = String(profile?.ifc_link_status || 'unlinked').trim().toLowerCase();
+  const allowedStatus = ['unlinked', 'pending', 'verified', 'failed'];
+  const status = allowedStatus.includes(rawStatus) ? rawStatus : 'unlinked';
+  return {
+    ...profile,
+    discourse_username: normalizedUsername,
+    ifc_link_status: status,
+    ifc_link_code: String(profile?.ifc_link_code || '').trim() || null,
+    ifc_link_verified_at: profile?.ifc_link_verified_at || null,
+    ifc_link_last_checked_at: profile?.ifc_link_last_checked_at || null,
+    ifc_link_last_error: String(profile?.ifc_link_last_error || '').trim() || null
+  };
+}
+
+function normalizeIfcUsername(raw = '') {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) return null;
+  const normalized = trimmed.replace(/^@+/, '').replace(/\s+/g, '-');
+  if (!/^[a-z0-9_.-]+$/i.test(normalized)) return null;
+  return normalized;
+}
+
+function generateIfcVerificationCode() {
+  return `${IFC_VERIFY_CODE_PREFIX}${randomInt(100000, 999999)}`;
+}
+
+function readIfcBioText(payload) {
+  const raw = payload?.user?.user_profile?.bio_raw
+    || payload?.user?.bio_raw
+    || payload?.user?.user_profile?.bio
+    || '';
+  return String(raw || '');
+}
+
+function syncDiscourseInputsFromProfile(profile) {
+  const input = document.getElementById('discourseUsernameInput');
+  if (!input) return;
+  input.value = profile?.discourse_username || '';
+}
+
+function renderDiscourseLinkStatus(profile) {
+  const statusEl = document.getElementById('discourseLinkStatus');
+  if (!statusEl) return;
+
+  const normalized = withIdentityDefaults(profile || currentProfile || {});
+  const status = normalized.ifc_link_status;
+  const username = normalized.discourse_username;
+  const code = normalized.ifc_link_code;
+  const verifiedAt = normalized.ifc_link_verified_at;
+  const lastError = normalized.ifc_link_last_error;
+
+  if (status === 'verified' && username) {
+    const verifiedLabel = verifiedAt ? new Date(verifiedAt).toLocaleString() : 'recently';
+    statusEl.innerText = `✅ Linked: @${username} (verified ${verifiedLabel})`;
+    return;
+  }
+
+  if (status === 'pending' && username && code) {
+    statusEl.innerText = `⏳ Pending: Add "${code}" to your IFC profile bio on community.infiniteflight.com/u/${username}, then click Check Verification.`;
+    return;
+  }
+
+  if (status === 'failed' && username && lastError) {
+    statusEl.innerText = `⚠️ Last verification failed for @${username}: ${lastError}`;
+    return;
+  }
+
+  if (username) {
+    statusEl.innerText = `Not verified yet for @${username}.`;
+    return;
+  }
+
+  statusEl.innerText = 'Not linked yet.';
 }
 
 function getAirlineNetworkAirports(airline) {
@@ -798,7 +884,7 @@ async function getProfile(userId) {
     .single();
 
   if (error) throw error;
-  return data;
+  return withIdentityDefaults(data);
 }
 
 async function ensureProfile(user, baseAirportMaybe) {
@@ -824,19 +910,20 @@ async function ensureProfile(user, baseAirportMaybe) {
 }
 
 async function refreshDerivedProfile(profile) {
-  const prog = getProgression(profile.hours || 0);
-  const jobSlots = getJobSlotCount(profile.hours || 0);
-  const effectiveLicense = highestLicense(profile.license, prog.license);
+  const enrichedProfile = withIdentityDefaults(profile);
+  const prog = getProgression(enrichedProfile.hours || 0);
+  const jobSlots = getJobSlotCount(enrichedProfile.hours || 0);
+  const effectiveLicense = highestLicense(enrichedProfile.license, prog.license);
   const effectiveState = licenseStateFor(effectiveLicense);
-  const effectiveEmployer = resolveEmployerForBase(profile.base_airport, profile.employer);
+  const effectiveEmployer = resolveEmployerForBase(enrichedProfile.base_airport, enrichedProfile.employer);
   const updates = {};
-  if (profile.license !== effectiveLicense) updates.license = effectiveLicense;
-  if (profile.position !== effectiveState.position) updates.position = effectiveState.position;
-  if (Number(profile.pay_multiplier) !== effectiveState.multiplier) updates.pay_multiplier = effectiveState.multiplier;
-  if (profile.job_slots !== jobSlots) updates.job_slots = jobSlots;
-  if (profile.employer !== effectiveEmployer) updates.employer = effectiveEmployer;
+  if (enrichedProfile.license !== effectiveLicense) updates.license = effectiveLicense;
+  if (enrichedProfile.position !== effectiveState.position) updates.position = effectiveState.position;
+  if (Number(enrichedProfile.pay_multiplier) !== effectiveState.multiplier) updates.pay_multiplier = effectiveState.multiplier;
+  if (enrichedProfile.job_slots !== jobSlots) updates.job_slots = jobSlots;
+  if (enrichedProfile.employer !== effectiveEmployer) updates.employer = effectiveEmployer;
 
-  if (Object.keys(updates).length === 0) return profile;
+  if (Object.keys(updates).length === 0) return enrichedProfile;
 
   const { data, error } = await supabaseClient
     .from('profiles')
@@ -846,7 +933,117 @@ async function refreshDerivedProfile(profile) {
     .single();
 
   if (error) throw error;
-  return data;
+  return withIdentityDefaults(data);
+}
+
+async function persistIdentityLinkUpdates(updates) {
+  if (!currentProfile) return false;
+  const { data, error } = await supabaseClient
+    .from('profiles')
+    .update(updates)
+    .eq('id', currentProfile.id)
+    .select('*')
+    .single();
+
+  if (error) {
+    if (isMissingIdentityColumnError(error)) {
+      alert('Identity link columns are missing in profiles. Apply the README SQL updates first.');
+      return false;
+    }
+    alert(error.message);
+    return false;
+  }
+
+  currentProfile = withIdentityDefaults(data);
+  renderDashboard(currentProfile);
+  return true;
+}
+
+async function startDiscourseVerificationFlow() {
+  if (!currentProfile) return;
+  const input = document.getElementById('discourseUsernameInput');
+  const candidate = input?.value || currentProfile.discourse_username || '';
+  const username = normalizeIfcUsername(candidate);
+  if (!username) {
+    alert('Enter a valid IFC username (letters, numbers, _, -, .).');
+    return;
+  }
+
+  const verificationCode = generateIfcVerificationCode();
+  const nowIso = new Date().toISOString();
+  const saved = await persistIdentityLinkUpdates({
+    discourse_username: username,
+    ifc_link_status: 'pending',
+    ifc_link_code: verificationCode,
+    ifc_link_verified_at: null,
+    ifc_link_last_checked_at: nowIso,
+    ifc_link_last_error: null
+  });
+  if (!saved) return;
+
+  syncDiscourseInputsFromProfile(currentProfile);
+  renderDiscourseLinkStatus(currentProfile);
+  alert(`Verification started for @${username}. Add "${verificationCode}" to your IFC profile bio, save your IFC profile, then click Check Verification.`);
+}
+
+async function checkDiscourseVerificationFlow() {
+  if (!currentProfile) return;
+  const profile = withIdentityDefaults(currentProfile);
+  const username = normalizeIfcUsername(profile.discourse_username || '');
+  const verificationCode = String(profile.ifc_link_code || '').trim();
+
+  if (!username || !verificationCode) {
+    alert('Start link verification first to generate your code.');
+    return;
+  }
+
+  const nowIso = new Date().toISOString();
+  const endpoint = `${IFC_DISCOURSE_BASE_URL}/u/${encodeURIComponent(username)}.json`;
+
+  try {
+    const res = await fetch(endpoint);
+    if (!res.ok) {
+      await persistIdentityLinkUpdates({
+        ifc_link_status: 'failed',
+        ifc_link_last_checked_at: nowIso,
+        ifc_link_last_error: `IFC profile fetch failed (${res.status})`
+      });
+      alert('Unable to fetch IFC profile right now. Try again shortly.');
+      return;
+    }
+
+    const payload = await res.json();
+    const bioText = readIfcBioText(payload);
+    const isVerified = bioText.includes(verificationCode);
+    const updates = isVerified
+      ? {
+        ifc_link_status: 'verified',
+        ifc_link_verified_at: nowIso,
+        ifc_link_last_checked_at: nowIso,
+        ifc_link_last_error: null
+      }
+      : {
+        ifc_link_status: 'pending',
+        ifc_link_last_checked_at: nowIso,
+        ifc_link_last_error: 'Verification code not found in IFC profile bio'
+      };
+
+    const saved = await persistIdentityLinkUpdates(updates);
+    if (!saved) return;
+
+    syncDiscourseInputsFromProfile(currentProfile);
+    renderDiscourseLinkStatus(currentProfile);
+    alert(isVerified
+      ? 'Account link verified successfully.'
+      : 'Verification code not found yet. Ensure the exact code is in your IFC bio and retry.');
+  } catch (err) {
+    await persistIdentityLinkUpdates({
+      ifc_link_status: 'failed',
+      ifc_link_last_checked_at: nowIso,
+      ifc_link_last_error: err?.message || String(err)
+    });
+    alert('Verification check failed. Please retry.');
+  }
 }
 
 function setAuthButtonLoading(buttonId, isLoading, loadingText, idleText) {
@@ -966,16 +1163,19 @@ async function resetPassword() {
 }
 
 function renderDashboard(profile) {
-  document.getElementById('userInfo').innerText = `Pilot: ${profile.username}`;
-  document.getElementById('userRank').innerText = profile.license;
-  document.getElementById('userBalance').innerText = profile.balance;
-  document.getElementById('userHours').innerText = profile.hours;
-  document.getElementById('jobSlots').innerText = profile.job_slots ?? 0;
-  document.getElementById('userEmployer').innerText = profile.employer || 'Unassigned';
-  document.getElementById('userBase').innerText = profile.base_airport || '----';
-  document.getElementById('sidebarEmployer').innerText = `Employer: ${profile.employer || 'Unassigned'}`;
-  document.getElementById('sidebarBase').innerText = `Base: ${profile.base_airport || '----'}`;
-  renderOnboardingCard(profile);
+  const normalizedProfile = withIdentityDefaults(profile);
+  document.getElementById('userInfo').innerText = `Pilot: ${normalizedProfile.username}`;
+  document.getElementById('userRank').innerText = normalizedProfile.license;
+  document.getElementById('userBalance').innerText = normalizedProfile.balance;
+  document.getElementById('userHours').innerText = normalizedProfile.hours;
+  document.getElementById('jobSlots').innerText = normalizedProfile.job_slots ?? 0;
+  document.getElementById('userEmployer').innerText = normalizedProfile.employer || 'Unassigned';
+  document.getElementById('userBase').innerText = normalizedProfile.base_airport || '----';
+  document.getElementById('sidebarEmployer').innerText = `Employer: ${normalizedProfile.employer || 'Unassigned'}`;
+  document.getElementById('sidebarBase').innerText = `Base: ${normalizedProfile.base_airport || '----'}`;
+  syncDiscourseInputsFromProfile(normalizedProfile);
+  renderDiscourseLinkStatus(normalizedProfile);
+  renderOnboardingCard(normalizedProfile);
   renderJobRefreshStatus();
 }
 
@@ -1818,14 +2018,29 @@ async function createTrackingSession(trackingSource) {
     origin: source.origin || latestSimbriefPlan?.origin?.icao_code || null,
     destination: source.destination || latestSimbriefPlan?.destination?.icao_code || null,
     status: 'enroute',
-    server_type: serverType
+    server_type: serverType,
+    identity_link_status: currentProfile?.ifc_link_status || 'unlinked',
+    identity_link_username: currentProfile?.discourse_username || null,
+    identity_link_verified_at: currentProfile?.ifc_link_verified_at || null
   };
 
-  const { data, error } = await supabaseClient
+  let { data, error } = await supabaseClient
     .from('flight_tracking')
     .insert([payload])
     .select('*')
     .single();
+
+  if (error && isMissingIdentityColumnError(error)) {
+    const payloadFallback = { ...payload };
+    delete payloadFallback.identity_link_status;
+    delete payloadFallback.identity_link_username;
+    delete payloadFallback.identity_link_verified_at;
+    ({ data, error } = await supabaseClient
+      .from('flight_tracking')
+      .insert([payloadFallback])
+      .select('*')
+      .single());
+  }
 
   if (error) {
     console.warn('Failed to start tracking:', error.message);
@@ -1952,9 +2167,11 @@ function renderOnboardingCard(profile) {
   const hasBase = !!profile?.base_airport;
   const hasAcceptedJob = !!acceptedJob;
   const hasDispatch = !!latestGeneratedDispatch?.legs?.length;
+  const hasIfcLink = String(profile?.ifc_link_status || '') === 'verified';
 
   onboardingList.innerHTML = `
     <li>${hasBase ? '✅' : '⬜'} Set your base airport</li>
+    <li>${hasIfcLink ? '✅' : '⬜'} Verify your Discourse / IFC account link</li>
     <li>${hasAcceptedJob ? '✅' : '⬜'} Accept a job in Job Market</li>
     <li>${hasDispatch ? '✅' : '⬜'} Generate dispatch route (2–3 legs)</li>
     <li>${hasTrackingHistory ? '✅' : '⬜'} Start tracking from Dispatch Center</li>
@@ -2024,3 +2241,5 @@ window.acceptJob = acceptJob;
 window.generateDispatch = generateDispatch;
 window.buyLicense = buyLicense;
 window.buyTypeRating = buyTypeRating;
+window.startDiscourseVerificationFlow = startDiscourseVerificationFlow;
+window.checkDiscourseVerificationFlow = checkDiscourseVerificationFlow;
