@@ -995,6 +995,8 @@ async function startDiscourseVerificationFlow() {
 }
 
 async function confirmIfcCodeAddedThenCheck() {
+  const confirmed = window.confirm('Please confirm: you have added the verification code to your IFC profile About Me and saved it.');
+  if (!confirmed) return;
   await checkDiscourseVerificationFlow();
 }
 
