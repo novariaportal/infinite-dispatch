@@ -398,7 +398,7 @@ function renderDiscourseLinkStatus(profile) {
 
   if (status === 'pending' && username && code) {
     const profileJsonUrl = buildIfcProfileJsonUrl(username);
-    statusEl.innerText = `⏳ Pending: Add "${code}" to your IFC profile bio on ${profileJsonUrl}, then click "Yes I have added the code to my account/profile's about me".`;
+    statusEl.innerText = `⏳ Pending: Add "${code}" to your IFC profile About Me on ${profileJsonUrl}, then click the confirmation button.`;
     return;
   }
 
@@ -991,7 +991,7 @@ async function startDiscourseVerificationFlow() {
   syncDiscourseInputsFromProfile(currentProfile);
   renderDiscourseLinkStatus(currentProfile);
   const profileJsonUrl = buildIfcProfileJsonUrl(username);
-  alert(`Verification started for @${username}. Add "${verificationCode}" to your IFC profile bio, save your IFC profile, then confirm with "Yes I have added the code to my account/profile's about me". Profile JSON URL: ${profileJsonUrl}`);
+  alert(`Verification started for @${username}. Add "${verificationCode}" to your IFC profile About Me, save your IFC profile, then confirm with "Yes I have added the code to my account/profile's about me". Profile JSON URL: ${profileJsonUrl}`);
 }
 
 async function confirmIfcCodeAddedThenCheck() {
@@ -1041,7 +1041,7 @@ async function checkDiscourseVerificationFlow() {
       : {
         ifc_link_status: 'pending',
         ifc_link_last_checked_at: nowIso,
-        ifc_link_last_error: 'Verification code not found in IFC profile bio'
+        ifc_link_last_error: 'Verification code not found in IFC profile About Me'
       };
 
     const saved = await persistIdentityLinkUpdates(updates);
@@ -1051,7 +1051,7 @@ async function checkDiscourseVerificationFlow() {
     renderDiscourseLinkStatus(currentProfile);
     alert(isVerified
       ? 'Account link verified successfully.'
-      : 'Verification code not found yet. Ensure the exact code is in your IFC bio and retry.');
+      : 'Verification code not found yet. Ensure the exact code is in your IFC profile About Me and retry.');
   } catch (err) {
     await persistIdentityLinkUpdates({
       ifc_link_status: 'failed',
