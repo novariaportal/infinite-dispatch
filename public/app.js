@@ -1013,11 +1013,6 @@ async function checkDiscourseVerificationFlow() {
     return;
   }
 
-  if (username !== profile.discourse_username) {
-    const usernameSaved = await persistIdentityLinkUpdates({ discourse_username: username });
-    if (!usernameSaved) return;
-  }
-
   const nowIso = new Date().toISOString();
   const endpoint = buildIfcProfileJsonUrl(username);
 
