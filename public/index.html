@@ -171,11 +171,11 @@
               </div>
               <div class="card">
                 <h3>Discourse / IFC Account Link</h3>
-                <p class="muted">Link your IFC account by placing a verification code in your IFC profile bio, then run verification.</p>
+                <p class="muted">Enter your IFC username, add the generated verification code to your IFC profile About Me, then confirm to verify.</p>
                 <div class="input-group">
                   <input type="text" id="discourseUsernameInput" placeholder="IFC username">
                   <button id="startDiscourseLinkBtn" onclick="startDiscourseVerificationFlow()">Start Link Verification</button>
-                  <button id="checkDiscourseLinkBtn" onclick="checkDiscourseVerificationFlow()">Check Verification</button>
+                  <button id="checkDiscourseLinkBtn" onclick="confirmIfcCodeAddedThenCheck()">Yes I have added the code to my account/profile's about me</button>
                 </div>
                 <p id="discourseLinkStatus" class="muted">Not linked yet.</p>
               </div>

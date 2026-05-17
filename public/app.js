@@ -367,6 +367,12 @@ function readIfcBioText(payload) {
   return String(raw || '');
 }
 
+function buildIfcProfileJsonUrl(username = '') {
+  const normalized = normalizeIfcUsername(username);
+  if (!normalized) return '';
+  return `${IFC_DISCOURSE_USER_BASE_URL}${encodeURIComponent(normalized)}.json`;
+}
+
 function syncDiscourseInputsFromProfile(profile) {
   const input = document.getElementById('discourseUsernameInput');
   if (!input) return;
@@ -391,8 +397,8 @@ function renderDiscourseLinkStatus(profile) {
   }
 
   if (status === 'pending' && username && code) {
-    const profileUrl = `${IFC_DISCOURSE_USER_BASE_URL}${encodeURIComponent(username)}`;
-    statusEl.innerText = `⏳ Pending: Add "${code}" to your IFC profile bio on ${profileUrl}, then click Check Verification.`;
+    const profileJsonUrl = buildIfcProfileJsonUrl(username);
+    statusEl.innerText = `⏳ Pending: Add "${code}" to your IFC profile bio on ${profileJsonUrl}, then click "Yes I have added the code to my account/profile's about me".`;
     return;
   }
 
@@ -984,23 +990,34 @@ async function startDiscourseVerificationFlow() {
 
   syncDiscourseInputsFromProfile(currentProfile);
   renderDiscourseLinkStatus(currentProfile);
-  alert(`Verification started for @${username}. Add "${verificationCode}" to your IFC profile bio, save your IFC profile, then click Check Verification.`);
+  const profileJsonUrl = buildIfcProfileJsonUrl(username);
+  alert(`Verification started for @${username}. Add "${verificationCode}" to your IFC profile bio, save your IFC profile, then confirm with "Yes I have added the code to my account/profile's about me". Profile JSON URL: ${profileJsonUrl}`);
+}
+
+async function confirmIfcCodeAddedThenCheck() {
+  await checkDiscourseVerificationFlow();
 }
 
 async function checkDiscourseVerificationFlow() {
   if (!currentProfile) return;
   const profile = withIdentityDefaults(currentProfile);
-  const username = normalizeIfcUsername(profile.discourse_username || '');
+  const input = document.getElementById('discourseUsernameInput');
+  const candidate = input?.value || profile.discourse_username || '';
+  const username = normalizeIfcUsername(candidate);
   const verificationCode = String(profile.ifc_link_code || '').trim();
 
   if (!username || !verificationCode) {
-    alert('Start link verification first to generate your code.');
+    alert('Enter your IFC username and start link verification first to generate your code.');
     return;
   }
 
+  if (username !== profile.discourse_username) {
+    const usernameSaved = await persistIdentityLinkUpdates({ discourse_username: username });
+    if (!usernameSaved) return;
+  }
+
   const nowIso = new Date().toISOString();
-  const encodedUsername = encodeURIComponent(username);
-  const endpoint = `${IFC_DISCOURSE_USER_BASE_URL}${encodedUsername}.json`;
+  const endpoint = buildIfcProfileJsonUrl(username);
 
   try {
     const res = await fetch(endpoint);
