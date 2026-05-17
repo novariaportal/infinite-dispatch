@@ -21,7 +21,7 @@ const MAX_CALLSIGN_LENGTH = 12;
 const NM_PER_KM = 0.539957;
 const MIN_VALID_TRACKING_SPEED_KTS = 40;
 const NEW_PILOT_HOURS_THRESHOLD = 5;
-const IFC_DISCOURSE_BASE_URL = 'https://community.infiniteflight.com';
+const IFC_DISCOURSE_USER_BASE_URL = 'https://community.infiniteflight.com/u/';
 const IFC_VERIFY_CODE_PREFIX = 'ID-LINK-';
 const AIRLABS_MAX_LIMIT = 50;
 const AIRLABS_FETCH_MAX_PAGES = 3;
@@ -391,7 +391,8 @@ function renderDiscourseLinkStatus(profile) {
   }
 
   if (status === 'pending' && username && code) {
-    statusEl.innerText = `⏳ Pending: Add "${code}" to your IFC profile bio on community.infiniteflight.com/u/${username}, then click Check Verification.`;
+    const profileUrl = `${IFC_DISCOURSE_USER_BASE_URL}${encodeURIComponent(username)}`;
+    statusEl.innerText = `⏳ Pending: Add "${code}" to your IFC profile bio on ${profileUrl}, then click Check Verification.`;
     return;
   }
 
@@ -998,7 +999,8 @@ async function checkDiscourseVerificationFlow() {
   }
 
   const nowIso = new Date().toISOString();
-  const endpoint = `${IFC_DISCOURSE_BASE_URL}/u/${encodeURIComponent(username)}.json`;
+  const encodedUsername = encodeURIComponent(username);
+  const endpoint = `${IFC_DISCOURSE_USER_BASE_URL}${encodedUsername}.json`;
 
   try {
     const res = await fetch(endpoint);
