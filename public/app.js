@@ -373,7 +373,11 @@ function readIfcBioText(payload) {
 function buildIfcProfileJsonUrl(username = '') {
   const normalized = normalizeIfcUsername(username);
   if (!normalized) return '';
-  return `${IFC_DISCOURSE_USER_BASE_URL}${encodeURIComponent(normalized)}.json`;
+  const configuredProxy = window.IFC_PROFILE_PROXY_URL;
+  if (typeof configuredProxy !== 'string') return '';
+  const proxyBase = configuredProxy.trim();
+  if (!proxyBase) return '';
+  return `${proxyBase}?username=${encodeURIComponent(normalized)}`;
 }
 
 function syncDiscourseInputsFromProfile(profile) {
