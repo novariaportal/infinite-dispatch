@@ -557,7 +557,12 @@ async function fetchAirlabsRoutes(params = {}) {
     query.set('_fields', 'airline_iata,airline_icao,flight_number,dep_icao,arr_icao,duration,days');
   }
 
-  const res = await fetch(`${supabaseUrl}/functions/v1/airlabs-routes?${query.toString()}`);
+  const res = await fetch(`${supabaseUrl}/functions/v1/airlabs-routes?${query.toString()}`, {
+    headers: {
+      apikey: supabasePublishableKey,
+      Authorization: `Bearer ${supabasePublishableKey}`
+    }
+  });
   if (!res.ok) return { data: [], request: { has_more: false } };
   const payload = await res.json();
   return payload || { data: [], request: { has_more: false } };
@@ -895,9 +900,10 @@ async function getProfile(userId) {
     .from('profiles')
     .select('*')
     .eq('id', userId)
-    .single();
+    .maybeSingle();
 
   if (error) throw error;
+  if (!data) throw new Error('row not found');
   return withIdentityDefaults(data);
 }
 
