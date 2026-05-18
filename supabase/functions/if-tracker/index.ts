@@ -13,7 +13,7 @@ const NM_PER_KM = 0.539957;
 const MIN_VALID_COMPLETION_DISTANCE_NM = 25;
 const MAX_VALID_COMPLETION_ALT_FT = 5000;
 const MAX_VALID_COMPLETION_GS_KTS = 260;
-const MISSING_COMPLETION_GRACE_MS = 30 * 60 * 1000;
+const ENROUTE_COMPLETION_GRACE_FROM_START_MS = 48 * 60 * 60 * 1000;
 const RECONCILE_MAX_DISTANCE_NM = 120;
 const AIRPORT_COORDS: Record<string, { lat: number; lon: number }> = {
   WSSS: { lat: 1.35, lon: 103.99 },
@@ -142,7 +142,7 @@ serve(async () => {
 
   const { data: sessions, error } = await supabase
     .from("flight_tracking")
-    .select("id, user_id, callsign, origin, destination, status, server_type, last_lat, last_lng, last_alt, last_speed, updated_at")
+    .select("id, user_id, callsign, origin, destination, status, server_type, last_lat, last_lng, last_alt, last_speed, updated_at, created_at")
     .eq("status", "enroute");
 
   if (error) {
@@ -267,9 +267,9 @@ serve(async () => {
         }
       }
 
-      const lastSeenMs = readDateMs(tracking.updated_at);
-      const hasGraceElapsed = lastSeenMs != null
-        ? Date.now() - lastSeenMs >= MISSING_COMPLETION_GRACE_MS
+      const flightStartMs = readDateMs(tracking.created_at);
+      const hasGraceElapsed = flightStartMs != null
+        ? Date.now() - flightStartMs >= ENROUTE_COMPLETION_GRACE_FROM_START_MS
         : false;
 
       if (!isValidatedCompletion || !hasGraceElapsed) {

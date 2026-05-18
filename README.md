@@ -213,7 +213,7 @@ In **Edge Functions → if-tracker → Schedule**, set:
 (Every 2 minutes)
 
 The tracker validates completion (destination proximity + landing profile) before marking a flight completed and awarding pay/hours.
-It also applies a 30-minute missing-flight grace window and callsign-family reconciliation so brief pauses or split legs do not prematurely end tracking.
+It also applies a 48-hour grace window from flight start before missing flights can be completed, plus callsign-family reconciliation so brief pauses or split legs do not prematurely end tracking.
 Tracking rows can also include identity-link metadata (`identity_link_*`) captured from the pilot profile at dispatch time.
 
 ### Optional: Isolated Debug Tracking (Recommended)
