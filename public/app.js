@@ -59,6 +59,12 @@ let acceptedJob = null;
 let passengerAircraftCatalog = [];
 let liveryCache = {};
 let airlabsCandidateCache = {};
+let lastAirlabsHealth = {
+  code: 'AIRLABS_NOT_CHECKED',
+  ok: false,
+  detail: 'No AirLabs request attempted yet.'
+};
+let lastJobMarketFailure = null;
 let hasTrackingHistory = false;
 
 const POPULARITY_MULTIPLIER = {
@@ -281,6 +287,25 @@ function randomInt(min, max) {
 function pickRandom(list) {
   if (!list || list.length === 0) return null;
   return list[randomInt(0, list.length - 1)];
+}
+
+function recordFailureCode(failureCounter, code) {
+  if (!failureCounter || !code) return;
+  failureCounter[code] = (failureCounter[code] || 0) + 1;
+}
+
+function getTopFailureCode(failureCounter) {
+  const entries = Object.entries(failureCounter || {});
+  if (!entries.length) return null;
+  entries.sort((a, b) => b[1] - a[1]);
+  return entries[0][0] || null;
+}
+
+function formatJobGenerationFailureText(failure) {
+  if (!failure?.code) return '';
+  const detail = failure.detail ? ` — ${failure.detail}` : '';
+  const attempts = Number.isFinite(Number(failure.attempts)) ? ` (attempts: ${failure.attempts})` : '';
+  return `Error Code: ${failure.code}${attempts}${detail}`;
 }
 
 function shuffleArray(input = []) {
@@ -557,15 +582,36 @@ async function fetchAirlabsRoutes(params = {}) {
     query.set('_fields', 'airline_iata,airline_icao,flight_number,dep_icao,arr_icao,duration,days');
   }
 
-  const res = await fetch(`${supabaseUrl}/functions/v1/airlabs-routes?${query.toString()}`, {
-    headers: {
-      apikey: supabasePublishableKey,
-      Authorization: `Bearer ${supabasePublishableKey}`
+  try {
+    const res = await fetch(`${supabaseUrl}/functions/v1/airlabs-routes?${query.toString()}`, {
+      headers: {
+        apikey: supabasePublishableKey,
+        Authorization: `Bearer ${supabasePublishableKey}`
+      }
+    });
+    if (!res.ok) {
+      lastAirlabsHealth = {
+        code: `AIRLABS_HTTP_${res.status}`,
+        ok: false,
+        detail: `Edge function returned HTTP ${res.status}.`
+      };
+      return { data: [], request: { has_more: false } };
     }
-  });
-  if (!res.ok) return { data: [], request: { has_more: false } };
-  const payload = await res.json();
-  return payload || { data: [], request: { has_more: false } };
+    const payload = await res.json();
+    lastAirlabsHealth = {
+      code: 'AIRLABS_OK',
+      ok: true,
+      detail: 'AirLabs edge route query succeeded.'
+    };
+    return payload || { data: [], request: { has_more: false } };
+  } catch (error) {
+    lastAirlabsHealth = {
+      code: 'AIRLABS_FETCH_FAILED',
+      ok: false,
+      detail: error?.message || String(error)
+    };
+    return { data: [], request: { has_more: false } };
+  }
 }
 
 async function fetchAirlabsCandidateLegs(params = {}) {
@@ -1475,11 +1521,17 @@ async function getRatedPassengerAircraft() {
   return models.filter((aircraft) => pilotOwnsTypeForAircraft(currentProfile, aircraft.displayName || aircraft.name));
 }
 
-async function generatePassengerJob(index) {
+async function generatePassengerJob(index, failureCounter = null) {
   const models = await getRatedPassengerAircraft();
-  if (!models.length) return null;
+  if (!models.length) {
+    recordFailureCode(failureCounter, 'JOBGEN_NO_ELIGIBLE_AIRCRAFT');
+    return null;
+  }
   const base = resolveProfileBaseAirport(currentProfile);
-  if (!base) return null;
+  if (!base) {
+    recordFailureCode(failureCounter, 'JOBGEN_INVALID_BASE_AIRPORT');
+    return null;
+  }
   const preferredEmployer = normalizeAirlineName(currentProfile?.employer);
   const validatedEmployer = preferredEmployer && AIRLINE_ROUTE_PROFILES[preferredEmployer]
     ? preferredEmployer
@@ -1487,14 +1539,27 @@ async function generatePassengerJob(index) {
 
   for (let attempt = 0; attempt < MAX_JOB_GENERATION_ATTEMPTS_PER_CYCLE; attempt += 1) {
     const aircraft = weightedAircraftPick(models);
-    if (!aircraft) continue;
+    if (!aircraft) {
+      recordFailureCode(failureCounter, 'JOBGEN_AIRCRAFT_PICK_FAILED');
+      continue;
+    }
 
     const operators = await fetchAircraftOperators(aircraft.id);
     const eligibleAirlines = operators.filter((airlineName) => AIRLINE_ROUTE_PROFILES[airlineName]
       && (!validatedEmployer || airlineName === validatedEmployer));
-    if (!eligibleAirlines.length) continue;
+    if (!operators.length) {
+      recordFailureCode(failureCounter, 'JOBGEN_NO_AIRCRAFT_OPERATORS');
+      continue;
+    }
+    if (!eligibleAirlines.length) {
+      recordFailureCode(failureCounter, validatedEmployer ? 'JOBGEN_EMPLOYER_AIRLINE_MISMATCH' : 'JOBGEN_NO_ELIGIBLE_AIRLINE');
+      continue;
+    }
     const airline = pickRandom(eligibleAirlines);
-    if (!airline) continue;
+    if (!airline) {
+      recordFailureCode(failureCounter, 'JOBGEN_AIRLINE_PICK_FAILED');
+      continue;
+    }
 
     const maxRangeNm = getAircraftRangeNm(aircraft.displayName || aircraft.name);
     const airlabsLegs = await fetchAirlabsCandidateLegs({
@@ -1510,8 +1575,12 @@ async function generatePassengerJob(index) {
       seedLeg = pickRandom(airlabsLegs);
       distanceNm = haversineNm(seedLeg.origin, seedLeg.destination);
     } else {
+      recordFailureCode(failureCounter, lastAirlabsHealth.ok ? 'JOBGEN_AIRLABS_NO_MATCHING_ROUTES' : 'JOBGEN_AIRLABS_UNAVAILABLE');
       const previewLegs = buildCuratedRoute(base, airline, aircraft.displayName || aircraft.name);
-      if (previewLegs.length < 2 || previewLegs.length > 3) continue;
+      if (previewLegs.length < 2 || previewLegs.length > 3) {
+        recordFailureCode(failureCounter, 'JOBGEN_CURATED_FALLBACK_FAILED');
+        continue;
+      }
       distanceNm = randomDistanceForAircraft(aircraft.name);
     }
 
@@ -1540,9 +1609,14 @@ function renderJobMarket() {
   countEl.innerText = availableJobs.length;
 
   if (!availableJobs.length) {
-    list.innerHTML = hasTypeRatings(currentProfile)
-      ? '<div class="list-item muted">No jobs available for your current type ratings. Try refreshing or buying another type rating.</div>'
-      : '<div class="list-item muted">No type rating found. Buy a type rating in Pilot Shop to unlock jobs.</div>';
+    if (!hasTypeRatings(currentProfile)) {
+      list.innerHTML = '<div class="list-item muted">No type rating found. Buy a type rating in Pilot Shop to unlock jobs.</div>';
+      return;
+    }
+
+    const detailLine = formatJobGenerationFailureText(lastJobMarketFailure);
+    const airlabsLine = `AirLabs Status: ${lastAirlabsHealth.code}${lastAirlabsHealth.detail ? ` — ${lastAirlabsHealth.detail}` : ''}`;
+    list.innerHTML = `<div class="list-item muted">No jobs available for your current type ratings. Try refreshing or buying another type rating.${detailLine ? `<br>${detailLine}` : ''}<br>${airlabsLine}</div>`;
     return;
   }
 
@@ -1561,9 +1635,15 @@ function renderJobMarket() {
 
 async function loadJobMarket() {
   if (!currentProfile) return;
+  lastJobMarketFailure = null;
   const baseAirport = resolveProfileBaseAirport(currentProfile);
   if (!baseAirport) {
     availableJobs = [];
+    lastJobMarketFailure = {
+      code: 'JOBGEN_INVALID_BASE_AIRPORT',
+      attempts: 0,
+      detail: 'Profile base airport is missing or not in the supported airport list.'
+    };
     const list = document.getElementById('jobsList');
     const countEl = document.getElementById('jobsCount');
     if (countEl) countEl.innerText = '0';
@@ -1578,13 +1658,25 @@ async function loadJobMarket() {
   }
 
   const slots = Number(currentProfile.job_slots || 0);
+  if (slots <= 0) {
+    availableJobs = [];
+    lastJobMarketFailure = {
+      code: 'JOBGEN_NO_JOB_SLOTS',
+      attempts: 0,
+      detail: 'Profile has zero job slots.'
+    };
+    renderJobMarket();
+    renderJobRefreshStatus();
+    return;
+  }
   availableJobs = [];
+  const failureCounter = {};
   const seen = new Set();
   let attempts = 0;
   const maxAttempts = Math.max(20, slots * 40);
 
   while (availableJobs.length < slots && attempts < maxAttempts) {
-    const job = await generatePassengerJob(attempts);
+    const job = await generatePassengerJob(attempts, failureCounter);
     attempts += 1;
     if (!job) continue;
 
@@ -1607,6 +1699,19 @@ async function loadJobMarket() {
       distanceNm: adjustedDistance,
       pay: calculateJobPay(adjustedDistance, cloneSource.aircraft)
     });
+  }
+
+  if (!availableJobs.length) {
+    const topFailureCode = getTopFailureCode(failureCounter) || 'JOBGEN_EXHAUSTED_ATTEMPTS';
+    lastJobMarketFailure = {
+      code: topFailureCode,
+      attempts,
+      detail: topFailureCode === 'JOBGEN_AIRLABS_UNAVAILABLE'
+        ? `AirLabs issue: ${lastAirlabsHealth.code}${lastAirlabsHealth.detail ? ` (${lastAirlabsHealth.detail})` : ''}`
+        : 'Unable to assemble a valid job after retries.'
+    };
+  } else {
+    lastJobMarketFailure = null;
   }
 
   renderJobMarket();
