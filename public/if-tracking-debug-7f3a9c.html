@@ -40,6 +40,32 @@
     </section>
 
     <section class="card stack">
+      <h2>IFC Linking Debug</h2>
+      <p class="muted">Inspect and update your profile IFC link fields from one place.</p>
+      <div class="grid-2">
+        <input type="text" id="ifcUsername" placeholder="IFC username">
+        <select id="ifcLinkStatus">
+          <option value="unlinked">unlinked</option>
+          <option value="pending">pending</option>
+          <option value="verified">verified</option>
+          <option value="failed">failed</option>
+        </select>
+        <input type="text" id="ifcCode" placeholder="Verification code (e.g. ID-LINK-123456)">
+        <input type="text" id="ifcVerifiedAt" placeholder="ifc_link_verified_at (ISO)">
+        <input type="text" id="ifcCheckedAt" placeholder="ifc_link_last_checked_at (ISO)">
+        <input type="text" id="ifcLastError" placeholder="ifc_link_last_error">
+      </div>
+      <div class="input-group">
+        <button id="loadIfcBtn">Load IFC Profile</button>
+        <button id="saveIfcBtn">Save IFC Fields</button>
+        <button id="startIfcBtn">Start IFC Verification</button>
+        <button id="checkIfcBtn">Check IFC About Me</button>
+      </div>
+      <div id="ifcStatusBar" class="mono muted">IFC link debug ready.</div>
+      <pre id="ifcDump" class="mono">IFC profile details appear here.</pre>
+    </section>
+
+    <section class="card stack">
       <h2>Create / Update Tracking Row</h2>
       <div class="grid-2">
         <input type="text" id="callsign" placeholder="Callsign (e.g. DAL123)">
@@ -106,10 +132,15 @@
     const trackingRowsEl = document.getElementById('trackingRows');
     const plansDumpEl = document.getElementById('plansDump');
     const selectedIdInput = document.getElementById('selectedId');
+    const ifcStatusBarEl = document.getElementById('ifcStatusBar');
+    const ifcDumpEl = document.getElementById('ifcDump');
     const MIN_CALLSIGN_SUFFIX = 100;
     const MAX_CALLSIGN_SUFFIX = 999;
     const DEBUG_TRACKING_TABLE = 'flight_tracking_debug';
+    const IFC_VERIFY_CODE_PREFIX = 'ID-LINK-';
+    const IFC_DISCOURSE_USER_BASE_URL = 'https://community.infiniteflight.com/u/';
     let currentUser = null;
+    let currentProfile = null;
     let supabaseClient = null;
 
     function safeUpper(inputId) {
@@ -127,6 +158,35 @@
       return `DBG${Math.floor(Math.random() * (MAX_CALLSIGN_SUFFIX - MIN_CALLSIGN_SUFFIX + 1) + MIN_CALLSIGN_SUFFIX)}`;
     }
 
+    function normalizeIfcUsername(raw = '') {
+      const trimmed = String(raw || '').trim();
+      if (!trimmed) return null;
+      const normalized = trimmed.replace(/^@+/, '').replace(/\s+/g, '-');
+      if (!/^[a-z0-9_.-]+$/i.test(normalized)) return null;
+      return normalized;
+    }
+
+    function generateIfcVerificationCode() {
+      return `${IFC_VERIFY_CODE_PREFIX}${Math.floor(Math.random() * 900000 + 100000)}`;
+    }
+
+    function buildIfcProfileJsonUrl(username = '') {
+      const normalized = normalizeIfcUsername(username);
+      if (!normalized) return '';
+      return `${IFC_DISCOURSE_USER_BASE_URL}${encodeURIComponent(normalized)}.json`;
+    }
+
+    function readIfcBioText(payload) {
+      const raw = payload?.user?.user_profile?.bio_raw
+        || payload?.user?.bio_raw
+        || payload?.user?.user_profile?.bio
+        || payload?.user?.bio
+        || payload?.user?.user_profile?.bio_excerpt
+        || payload?.user?.bio_excerpt
+        || '';
+      return String(raw || '');
+    }
+
     function valueOrDash(value) {
       return value ?? '—';
     }
@@ -140,6 +200,141 @@
       authStateEl.textContent = currentUser
         ? `Signed in as ${currentUser.email} (${currentUser.id})`
         : 'Not signed in.';
+    }
+
+    function setIfcStatus(message, isError = false) {
+      ifcStatusBarEl.textContent = message;
+      ifcStatusBarEl.style.color = isError ? '#dc2626' : '';
+    }
+
+    function renderIfcProfile(profile) {
+      document.getElementById('ifcUsername').value = profile?.discourse_username || '';
+      document.getElementById('ifcLinkStatus').value = profile?.ifc_link_status || 'unlinked';
+      document.getElementById('ifcCode').value = profile?.ifc_link_code || '';
+      document.getElementById('ifcVerifiedAt').value = profile?.ifc_link_verified_at || '';
+      document.getElementById('ifcCheckedAt').value = profile?.ifc_link_last_checked_at || '';
+      document.getElementById('ifcLastError').value = profile?.ifc_link_last_error || '';
+      ifcDumpEl.textContent = JSON.stringify(profile || {}, null, 2);
+    }
+
+    function clearIfcProfile() {
+      currentProfile = null;
+      renderIfcProfile({});
+      ifcDumpEl.textContent = 'IFC profile details appear here.';
+    }
+
+    async function saveIfcFields(updates, successMessage = 'Saved IFC link fields.') {
+      if (!currentUser) return setIfcStatus('Sign in first.', true);
+      const client = ensureClient();
+      const { data, error } = await client
+        .from('profiles')
+        .update(updates)
+        .eq('id', currentUser.id)
+        .select('id, discourse_username, ifc_link_status, ifc_link_code, ifc_link_verified_at, ifc_link_last_checked_at, ifc_link_last_error')
+        .single();
+      if (error) throw error;
+      currentProfile = data;
+      renderIfcProfile(data);
+      setIfcStatus(successMessage);
+    }
+
+    async function loadIfcProfile() {
+      if (!currentUser) return setIfcStatus('Sign in first.', true);
+      try {
+        const client = ensureClient();
+        const { data, error } = await client
+          .from('profiles')
+          .select('id, discourse_username, ifc_link_status, ifc_link_code, ifc_link_verified_at, ifc_link_last_checked_at, ifc_link_last_error')
+          .eq('id', currentUser.id)
+          .maybeSingle();
+        if (error) throw error;
+        currentProfile = data || null;
+        renderIfcProfile(currentProfile || {});
+        setIfcStatus(currentProfile ? 'Loaded IFC profile fields.' : 'No profile row found.');
+      } catch (err) {
+        setIfcStatus(`Load IFC profile failed: ${err.message}`, true);
+      }
+    }
+
+    async function saveIfcProfileFromInputs() {
+      try {
+        const username = normalizeIfcUsername(document.getElementById('ifcUsername').value || '');
+        const status = (document.getElementById('ifcLinkStatus').value || 'unlinked').trim();
+        const updates = {
+          discourse_username: username,
+          ifc_link_status: status,
+          ifc_link_code: (document.getElementById('ifcCode').value || '').trim() || null,
+          ifc_link_verified_at: (document.getElementById('ifcVerifiedAt').value || '').trim() || null,
+          ifc_link_last_checked_at: (document.getElementById('ifcCheckedAt').value || '').trim() || null,
+          ifc_link_last_error: (document.getElementById('ifcLastError').value || '').trim() || null
+        };
+        await saveIfcFields(updates);
+      } catch (err) {
+        setIfcStatus(`Save IFC fields failed: ${err.message}`, true);
+      }
+    }
+
+    async function startIfcVerification() {
+      if (!currentUser) return setIfcStatus('Sign in first.', true);
+      try {
+        const username = normalizeIfcUsername(document.getElementById('ifcUsername').value || currentProfile?.discourse_username || '');
+        if (!username) return setIfcStatus('Enter a valid IFC username first.', true);
+        const nowIso = new Date().toISOString();
+        const code = generateIfcVerificationCode();
+        await saveIfcFields({
+          discourse_username: username,
+          ifc_link_status: 'pending',
+          ifc_link_code: code,
+          ifc_link_verified_at: null,
+          ifc_link_last_checked_at: nowIso,
+          ifc_link_last_error: null
+        }, `Started IFC verification for @${username}.`);
+        ifcDumpEl.textContent = `Profile JSON URL: ${buildIfcProfileJsonUrl(username)}\nVerification code: ${code}\n\n${JSON.stringify(currentProfile || {}, null, 2)}`;
+      } catch (err) {
+        setIfcStatus(`Start IFC verification failed: ${err.message}`, true);
+      }
+    }
+
+    async function checkIfcVerification() {
+      if (!currentUser) return setIfcStatus('Sign in first.', true);
+      try {
+        const username = normalizeIfcUsername(document.getElementById('ifcUsername').value || currentProfile?.discourse_username || '');
+        const code = String(document.getElementById('ifcCode').value || currentProfile?.ifc_link_code || '').trim();
+        if (!username || !code) return setIfcStatus('Provide IFC username + code first.', true);
+
+        const endpoint = buildIfcProfileJsonUrl(username);
+        const nowIso = new Date().toISOString();
+        const res = await fetch(endpoint);
+        if (!res.ok) {
+          await saveIfcFields({
+            ifc_link_status: 'failed',
+            ifc_link_last_checked_at: nowIso,
+            ifc_link_last_error: `IFC profile fetch failed (${res.status})`
+          }, `IFC profile fetch failed (${res.status}).`);
+          return;
+        }
+
+        const payload = await res.json();
+        const bioText = readIfcBioText(payload);
+        const isVerified = bioText.includes(code);
+        const updates = isVerified
+          ? {
+            ifc_link_status: 'verified',
+            ifc_link_verified_at: nowIso,
+            ifc_link_last_checked_at: nowIso,
+            ifc_link_last_error: null
+          }
+          : {
+            ifc_link_status: 'pending',
+            ifc_link_last_checked_at: nowIso,
+            ifc_link_last_error: 'Verification code not found in IFC profile About Me'
+          };
+
+        await saveIfcFields(updates, isVerified ? 'IFC verification succeeded.' : 'IFC verification still pending.');
+        ifcDumpEl.textContent = `Profile JSON URL: ${endpoint}\nCode found: ${isVerified ? 'yes' : 'no'}\n\nAbout Me excerpt:\n${bioText.slice(0, 1000)}\n\n${JSON.stringify(currentProfile || {}, null, 2)}`;
+      } catch (err) {
+        setIfcStatus(`Check IFC verification failed: ${err.message}`, true);
+      }
     }
 
     function ensureClient() {
@@ -204,6 +399,7 @@
         currentUser = data.user;
         setAuthState();
         await loadTrackingRows();
+        await loadIfcProfile();
       } catch (err) {
         setStatus(`Sign in failed: ${err.message}`, true);
       }
@@ -216,6 +412,7 @@
         currentUser = null;
         trackingRowsEl.innerHTML = '';
         plansDumpEl.textContent = 'Flight plans output appears here.';
+        clearIfcProfile();
         setAuthState();
         setStatus('Signed out.');
       } catch (err) {
@@ -317,7 +514,10 @@
         const { data } = await client.auth.getUser();
         currentUser = data?.user || null;
         setAuthState();
-        if (currentUser) await loadTrackingRows();
+        if (currentUser) {
+          await loadTrackingRows();
+          await loadIfcProfile();
+        }
       } catch (err) {
         setStatus(err.message, true);
       }
@@ -330,6 +530,10 @@
     document.getElementById('updateBtn').addEventListener('click', updateSession);
     document.getElementById('deleteBtn').addEventListener('click', deleteSession);
     document.getElementById('plansBtn').addEventListener('click', loadPlans);
+    document.getElementById('loadIfcBtn').addEventListener('click', loadIfcProfile);
+    document.getElementById('saveIfcBtn').addEventListener('click', saveIfcProfileFromInputs);
+    document.getElementById('startIfcBtn').addEventListener('click', startIfcVerification);
+    document.getElementById('checkIfcBtn').addEventListener('click', checkIfcVerification);
     bootstrap();
   </script>
 </body>

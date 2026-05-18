@@ -213,6 +213,7 @@ In **Edge Functions → if-tracker → Schedule**, set:
 (Every 2 minutes)
 
 The tracker validates completion (destination proximity + landing profile) before marking a flight completed and awarding pay/hours.
+It also applies a 30-minute missing-flight grace window and callsign-family reconciliation so brief pauses or split legs do not prematurely end tracking.
 Tracking rows can also include identity-link metadata (`identity_link_*`) captured from the pilot profile at dispatch time.
 
 ### Optional: Isolated Debug Tracking (Recommended)
@@ -255,6 +256,7 @@ grant select, insert, update, delete on table public.flight_tracking_debug to au
    - Open `supabase/functions/if-tracker-debug/index.ts` in this repo and copy-paste its full contents into the dashboard editor
    - Deploy it
 3. Use your internal debug tracking page only with this debug table/function path.
+   - The page also includes IFC link debug controls for profile identity-link fields.
    - Invoke the `if-tracker-debug` function URL when you want to process debug rows.
 4. Do not schedule `if-tracker-debug` in place of production `if-tracker`.
 
