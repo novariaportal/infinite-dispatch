@@ -308,6 +308,30 @@ function formatJobGenerationFailureText(failure) {
   return `Error Code: ${failure.code}${attempts}${detail}`;
 }
 
+function formatAirlabsStatusText() {
+  const detail = lastAirlabsHealth.detail ? ` — ${lastAirlabsHealth.detail}` : '';
+  return `AirLabs Status: ${lastAirlabsHealth.code}${detail}`;
+}
+
+function buildNoJobsMessage() {
+  const detailLine = formatJobGenerationFailureText(lastJobMarketFailure);
+  const airlabsLine = formatAirlabsStatusText();
+  const lines = [
+    'No jobs available for your current type ratings. Try refreshing or buying another type rating.',
+    detailLine,
+    airlabsLine
+  ].filter(Boolean);
+  return `<div class="list-item muted">${lines.join('<br>')}</div>`;
+}
+
+function buildJobFailureDetail(code) {
+  if (code === 'JOBGEN_AIRLABS_UNAVAILABLE') {
+    const extra = lastAirlabsHealth.detail ? ` (${lastAirlabsHealth.detail})` : '';
+    return `AirLabs issue: ${lastAirlabsHealth.code}${extra}`;
+  }
+  return 'Unable to assemble a valid job after retries.';
+}
+
 function shuffleArray(input = []) {
   const list = input.slice();
   for (let i = list.length - 1; i > 0; i -= 1) {
@@ -1552,7 +1576,11 @@ async function generatePassengerJob(index, failureCounter = null) {
       continue;
     }
     if (!eligibleAirlines.length) {
-      recordFailureCode(failureCounter, validatedEmployer ? 'JOBGEN_EMPLOYER_AIRLINE_MISMATCH' : 'JOBGEN_NO_ELIGIBLE_AIRLINE');
+      if (validatedEmployer) {
+        recordFailureCode(failureCounter, 'JOBGEN_EMPLOYER_AIRLINE_MISMATCH');
+      } else {
+        recordFailureCode(failureCounter, 'JOBGEN_NO_ELIGIBLE_AIRLINE');
+      }
       continue;
     }
     const airline = pickRandom(eligibleAirlines);
@@ -1575,7 +1603,11 @@ async function generatePassengerJob(index, failureCounter = null) {
       seedLeg = pickRandom(airlabsLegs);
       distanceNm = haversineNm(seedLeg.origin, seedLeg.destination);
     } else {
-      recordFailureCode(failureCounter, lastAirlabsHealth.ok ? 'JOBGEN_AIRLABS_NO_MATCHING_ROUTES' : 'JOBGEN_AIRLABS_UNAVAILABLE');
+      if (lastAirlabsHealth.ok) {
+        recordFailureCode(failureCounter, 'JOBGEN_AIRLABS_NO_MATCHING_ROUTES');
+      } else {
+        recordFailureCode(failureCounter, 'JOBGEN_AIRLABS_UNAVAILABLE');
+      }
       const previewLegs = buildCuratedRoute(base, airline, aircraft.displayName || aircraft.name);
       if (previewLegs.length < 2 || previewLegs.length > 3) {
         recordFailureCode(failureCounter, 'JOBGEN_CURATED_FALLBACK_FAILED');
@@ -1614,9 +1646,7 @@ function renderJobMarket() {
       return;
     }
 
-    const detailLine = formatJobGenerationFailureText(lastJobMarketFailure);
-    const airlabsLine = `AirLabs Status: ${lastAirlabsHealth.code}${lastAirlabsHealth.detail ? ` — ${lastAirlabsHealth.detail}` : ''}`;
-    list.innerHTML = `<div class="list-item muted">No jobs available for your current type ratings. Try refreshing or buying another type rating.${detailLine ? `<br>${detailLine}` : ''}<br>${airlabsLine}</div>`;
+    list.innerHTML = buildNoJobsMessage();
     return;
   }
 
@@ -1706,9 +1736,7 @@ async function loadJobMarket() {
     lastJobMarketFailure = {
       code: topFailureCode,
       attempts,
-      detail: topFailureCode === 'JOBGEN_AIRLABS_UNAVAILABLE'
-        ? `AirLabs issue: ${lastAirlabsHealth.code}${lastAirlabsHealth.detail ? ` (${lastAirlabsHealth.detail})` : ''}`
-        : 'Unable to assemble a valid job after retries.'
+      detail: buildJobFailureDetail(topFailureCode)
     };
   } else {
     lastJobMarketFailure = null;
