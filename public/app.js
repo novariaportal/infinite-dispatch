@@ -21,7 +21,7 @@ const MAX_CALLSIGN_LENGTH = 12;
 const NM_PER_KM = 0.539957;
 const MIN_VALID_TRACKING_SPEED_KTS = 40;
 const NEW_PILOT_HOURS_THRESHOLD = 5;
-const IFC_DISCOURSE_BASE_URL = 'https://community.infiniteflight.com';
+const IFC_DISCOURSE_USER_BASE_URL = 'https://community.infiniteflight.com/u/';
 const IFC_VERIFY_CODE_PREFIX = 'ID-LINK-';
 const AIRLABS_MAX_LIMIT = 50;
 const AIRLABS_FETCH_MAX_PAGES = 3;
@@ -367,6 +367,12 @@ function readIfcBioText(payload) {
   return String(raw || '');
 }
 
+function buildIfcProfileJsonUrl(username = '') {
+  const normalized = normalizeIfcUsername(username);
+  if (!normalized) return '';
+  return `${IFC_DISCOURSE_USER_BASE_URL}${encodeURIComponent(normalized)}.json`;
+}
+
 function syncDiscourseInputsFromProfile(profile) {
   const input = document.getElementById('discourseUsernameInput');
   if (!input) return;
@@ -391,7 +397,8 @@ function renderDiscourseLinkStatus(profile) {
   }
 
   if (status === 'pending' && username && code) {
-    statusEl.innerText = `⏳ Pending: Add "${code}" to your IFC profile bio on community.infiniteflight.com/u/${username}, then click Check Verification.`;
+    const profileJsonUrl = buildIfcProfileJsonUrl(username);
+    statusEl.innerText = `⏳ Pending: Add "${code}" to your IFC profile About Me on ${profileJsonUrl}, then click the confirmation button.`;
     return;
   }
 
@@ -983,22 +990,31 @@ async function startDiscourseVerificationFlow() {
 
   syncDiscourseInputsFromProfile(currentProfile);
   renderDiscourseLinkStatus(currentProfile);
-  alert(`Verification started for @${username}. Add "${verificationCode}" to your IFC profile bio, save your IFC profile, then click Check Verification.`);
+  const profileJsonUrl = buildIfcProfileJsonUrl(username);
+  alert(`Verification started for @${username}. Add "${verificationCode}" to your IFC profile About Me, save your IFC profile, then confirm with "Yes I have added the code to my account/profile's about me". Profile JSON URL: ${profileJsonUrl}`);
+}
+
+async function confirmIfcCodeAddedThenCheck() {
+  const confirmed = window.confirm('Please confirm: you have added the verification code to your IFC profile About Me and saved it.');
+  if (!confirmed) return;
+  await checkDiscourseVerificationFlow();
 }
 
 async function checkDiscourseVerificationFlow() {
   if (!currentProfile) return;
   const profile = withIdentityDefaults(currentProfile);
-  const username = normalizeIfcUsername(profile.discourse_username || '');
+  const input = document.getElementById('discourseUsernameInput');
+  const candidate = input?.value || profile.discourse_username || '';
+  const username = normalizeIfcUsername(candidate);
   const verificationCode = String(profile.ifc_link_code || '').trim();
 
   if (!username || !verificationCode) {
-    alert('Start link verification first to generate your code.');
+    alert('Enter your IFC username and start link verification first to generate your code.');
     return;
   }
 
   const nowIso = new Date().toISOString();
-  const endpoint = `${IFC_DISCOURSE_BASE_URL}/u/${encodeURIComponent(username)}.json`;
+  const endpoint = buildIfcProfileJsonUrl(username);
 
   try {
     const res = await fetch(endpoint);
@@ -1025,7 +1041,7 @@ async function checkDiscourseVerificationFlow() {
       : {
         ifc_link_status: 'pending',
         ifc_link_last_checked_at: nowIso,
-        ifc_link_last_error: 'Verification code not found in IFC profile bio'
+        ifc_link_last_error: 'Verification code not found in IFC profile About Me'
       };
 
     const saved = await persistIdentityLinkUpdates(updates);
@@ -1035,7 +1051,7 @@ async function checkDiscourseVerificationFlow() {
     renderDiscourseLinkStatus(currentProfile);
     alert(isVerified
       ? 'Account link verified successfully.'
-      : 'Verification code not found yet. Ensure the exact code is in your IFC bio and retry.');
+      : 'Verification code not found yet. Ensure the exact code is in your IFC profile About Me and retry.');
   } catch (err) {
     await persistIdentityLinkUpdates({
       ifc_link_status: 'failed',
