@@ -391,6 +391,13 @@ function isMissingIdentityColumnError(error) {
   return /ifc_link|discourse_username|identity_link/i.test(message);
 }
 
+function isMissingSimBriefTrackingColumnError(error) {
+  const code = String(error?.code || '').trim();
+  if (code === '42703' || code === 'PGRST204') return true;
+  const message = String(error?.message || '');
+  return /simbrief_tracking_admin_enabled/i.test(message);
+}
+
 function withIdentityDefaults(profile) {
   const normalizedUsername = String(profile?.discourse_username || '').trim() || null;
   const rawStatus = String(profile?.ifc_link_status || 'unlinked').trim().toLowerCase();
@@ -404,6 +411,13 @@ function withIdentityDefaults(profile) {
     ifc_link_verified_at: profile?.ifc_link_verified_at || null,
     ifc_link_last_checked_at: profile?.ifc_link_last_checked_at || null,
     ifc_link_last_error: String(profile?.ifc_link_last_error || '').trim() || null
+  };
+}
+
+function withSimBriefTrackingDefaults(profile) {
+  return {
+    ...profile,
+    simbrief_tracking_admin_enabled: Boolean(profile?.simbrief_tracking_admin_enabled)
   };
 }
 
@@ -961,15 +975,22 @@ async function createProfile(user, baseAirport) {
     type_ratings: [starterTypeRating],
     job_refreshes_used: 0,
     job_refresh_window_started_at: null,
-    job_refresh_admin_override: false
+    job_refresh_admin_override: false,
+    simbrief_tracking_admin_enabled: false
   };
 
   let { error } = await supabaseClient.from('profiles').insert([profile]);
+  if (error && isMissingSimBriefTrackingColumnError(error)) {
+    const fallbackProfile = { ...profile };
+    delete fallbackProfile.simbrief_tracking_admin_enabled;
+    ({ error } = await supabaseClient.from('profiles').insert([fallbackProfile]));
+  }
   if (error && isMissingJobRefreshColumnError(error)) {
     const fallbackProfile = { ...profile };
     delete fallbackProfile.job_refreshes_used;
     delete fallbackProfile.job_refresh_window_started_at;
     delete fallbackProfile.job_refresh_admin_override;
+    delete fallbackProfile.simbrief_tracking_admin_enabled;
     ({ error } = await supabaseClient.from('profiles').insert([fallbackProfile]));
   }
   if (error) throw error;
@@ -985,7 +1006,7 @@ async function getProfile(userId) {
 
   if (error) throw error;
   if (!data) throw new Error('row not found');
-  return withIdentityDefaults(data);
+  return withSimBriefTrackingDefaults(withIdentityDefaults(data));
 }
 
 async function ensureProfile(user, baseAirportMaybe) {
@@ -1925,7 +1946,7 @@ function renderGeneratedDispatch(routePlan) {
     `Total Dispatch Pay: $${totalPay.toLocaleString()}\n` +
     `Route returns to base by leg ${routePlan.legs.length}.`;
 
-  document.getElementById('startTrackingBtn').style.display = 'block';
+  updateStartTrackingButtonVisibility();
   if (currentProfile) renderOnboardingCard(currentProfile);
 }
 
@@ -2243,22 +2264,45 @@ async function fetchSimBrief() {
         `Aircraft Type: ${data.aircraft.icaocode}\n` +
         `Block Fuel: ${data.fuel.plan_ramp}`;
       await saveSimBriefPlan(data);
+      updateStartTrackingButtonVisibility();
     } else {
+      latestSimbriefPlan = null;
       document.getElementById('sbResult').innerText = 'No recent flight plan found.';
+      updateStartTrackingButtonVisibility();
     }
   } catch (err) {
+    latestSimbriefPlan = null;
     document.getElementById('sbResult').innerText = 'Error fetching SimBrief data.';
+    updateStartTrackingButtonVisibility();
   }
 }
 
+function updateStartTrackingButtonVisibility() {
+  const startTrackingBtn = document.getElementById('startTrackingBtn');
+  if (!startTrackingBtn) return;
+
+  const hasGeneratedDispatch = Boolean(latestGeneratedDispatch?.legs?.length);
+  const hasSimBriefPlan = Boolean(latestSimbriefPlan?.general);
+  const simBriefOnlyAllowed = Boolean(currentProfile?.simbrief_tracking_admin_enabled);
+  const canStartFromSimBriefOnly = !hasGeneratedDispatch && simBriefOnlyAllowed && hasSimBriefPlan;
+
+  startTrackingBtn.style.display = (hasGeneratedDispatch || canStartFromSimBriefOnly) ? 'block' : 'none';
+  startTrackingBtn.innerText = canStartFromSimBriefOnly ? 'Start Flight Tracking (SimBrief)' : 'Start Flight Tracking';
+}
+
 async function dispatchFlight() {
-  if (!latestGeneratedDispatch?.legs?.length) {
-    alert('Generate a dispatch first.');
+  const hasGeneratedDispatch = Boolean(latestGeneratedDispatch?.legs?.length);
+  const hasSimBriefPlan = Boolean(latestSimbriefPlan?.general);
+  const simBriefOnlyAllowed = Boolean(currentProfile?.simbrief_tracking_admin_enabled);
+  const canStartFromSimBriefOnly = !hasGeneratedDispatch && simBriefOnlyAllowed && hasSimBriefPlan;
+
+  if (!hasGeneratedDispatch && !canStartFromSimBriefOnly) {
+    alert('Generate a dispatch first, or ask admin to enable SimBrief-only tracking and import a SimBrief plan.');
     return;
   }
 
   let source = null;
-  if (latestGeneratedDispatch?.legs?.length) {
+  if (hasGeneratedDispatch) {
     source = {
       airline: latestGeneratedDispatch.airline,
       origin: latestGeneratedDispatch.legs[0].origin,
