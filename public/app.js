@@ -2297,7 +2297,7 @@ async function dispatchFlight() {
   const canStartFromSimBriefOnly = !hasGeneratedDispatch && simBriefOnlyAllowed && hasSimBriefPlan;
 
   if (!hasGeneratedDispatch && !canStartFromSimBriefOnly) {
-    alert('Generate a dispatch first, or ask admin to enable SimBrief-only tracking and import a SimBrief plan.');
+    alert('Generate a dispatch first. Alternatively, if your admin has enabled SimBrief-only tracking, import a SimBrief plan.');
     return;
   }
 

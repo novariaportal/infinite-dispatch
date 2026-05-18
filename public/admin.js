@@ -148,9 +148,6 @@ async function runProfileSelectWithFallback(buildQuery) {
   if (result.error && isMissingIdentityColumnError(result.error)) {
     result = await buildQuery(`${PROFILE_SELECT_BASE_FIELDS}, ${PROFILE_SELECT_REFRESH_FIELDS}, ${PROFILE_SELECT_SIMBRIEF_TRACKING_FIELDS}`);
   }
-  if (result.error && isMissingSimBriefTrackingColumnError(result.error)) {
-    result = await buildQuery(`${PROFILE_SELECT_BASE_FIELDS}, ${PROFILE_SELECT_REFRESH_FIELDS}, ${PROFILE_SELECT_IDENTITY_FIELDS}`);
-  }
   if (result.error && isMissingJobRefreshColumnError(result.error)) {
     result = await buildQuery(PROFILE_SELECT_BASE_FIELDS);
   }
