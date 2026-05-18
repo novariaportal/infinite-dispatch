@@ -240,7 +240,7 @@
         .select('id, discourse_username, ifc_link_status, ifc_link_code, ifc_link_verified_at, ifc_link_last_checked_at, ifc_link_last_error')
         .maybeSingle();
       if (error) throw error;
-      if (!data) throw new Error('Profile row not found for current user.');
+      if (!data) throw new Error('row not found');
       currentProfile = data;
       renderIfcProfile(data);
       setIfcStatus(successMessage);
