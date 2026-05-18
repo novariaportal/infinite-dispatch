@@ -362,9 +362,10 @@ function generateIfcVerificationCode() {
 function readIfcBioText(payload) {
   const raw = payload?.user?.user_profile?.bio_raw
     || payload?.user?.bio_raw
+    || payload?.user?.user_profile?.bio
+    || payload?.user?.bio
     || payload?.user?.user_profile?.bio_excerpt
     || payload?.user?.bio_excerpt
-    || payload?.user?.user_profile?.bio
     || '';
   return String(raw || '');
 }
