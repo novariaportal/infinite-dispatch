@@ -135,6 +135,8 @@
     const selectedIdInput = document.getElementById('selectedId');
     const ifcStatusBarEl = document.getElementById('ifcStatusBar');
     const ifcDumpEl = document.getElementById('ifcDump');
+    const isLocalDebugHost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+    const allowDebugVerifyBypass = isLocalDebugHost || window.ALLOW_IFC_DEBUG_BYPASS === true;
     const MIN_CALLSIGN_SUFFIX = 100;
     const MAX_CALLSIGN_SUFFIX = 999;
     const DEBUG_TRACKING_TABLE = 'flight_tracking_debug';
@@ -340,6 +342,9 @@
 
     async function debugSetIfcVerifiedWithoutCheck() {
       if (!currentUser) return setIfcStatus('Sign in first.', true);
+      if (!allowDebugVerifyBypass) {
+        return setIfcStatus('Debug verify bypass is disabled on this environment.', true);
+      }
       try {
         const username = normalizeIfcUsername(document.getElementById('ifcUsername').value || currentProfile?.discourse_username || '');
         if (!username) return setIfcStatus('Enter a valid IFC username first.', true);

@@ -112,8 +112,7 @@ function readDateMs(value: unknown) {
 function findReconciledFlight(
   tracking: any,
   flights: any[],
-  preferredIdentityUsername: string | null = null,
-  enforceIdentityMatch = true
+  preferredIdentityUsername: string | null = null
 ) {
   if (typeof tracking.last_lat !== "number" || typeof tracking.last_lng !== "number") {
     return null;
@@ -123,15 +122,12 @@ function findReconciledFlight(
   const trackedFamily = callsignFamily(trackedCallsign);
   if (!trackedCallsign) return null;
 
+  let bestIdentityMatch: any = null;
+  let bestIdentityDistanceNm = Number.POSITIVE_INFINITY;
   let bestMatch: any = null;
   let bestDistanceNm = Number.POSITIVE_INFINITY;
 
   for (const flight of flights) {
-    if (preferredIdentityUsername && enforceIdentityMatch) {
-      const liveIdentity = readFlightIdentityUsername(flight);
-      if (liveIdentity !== preferredIdentityUsername) continue;
-    }
-
     const flightCallsign = normalizeCallsign(flight?.callsign);
     if (!flightCallsign) continue;
 
@@ -154,18 +150,21 @@ function findReconciledFlight(
       longitude
     );
     if (distanceNm > RECONCILE_MAX_DISTANCE_NM) continue;
+    const liveIdentity = readFlightIdentityUsername(flight);
+    if (
+      preferredIdentityUsername &&
+      liveIdentity === preferredIdentityUsername &&
+      distanceNm < bestIdentityDistanceNm
+    ) {
+      bestIdentityDistanceNm = distanceNm;
+      bestIdentityMatch = flight;
+    }
     if (distanceNm >= bestDistanceNm) continue;
-
     bestDistanceNm = distanceNm;
     bestMatch = flight;
   }
 
-  if (bestMatch) return bestMatch;
-  if (preferredIdentityUsername && enforceIdentityMatch) {
-    return findReconciledFlight(tracking, flights, preferredIdentityUsername, false);
-  }
-
-  return bestMatch;
+  return bestIdentityMatch || bestMatch;
 }
 
 serve(async () => {
@@ -248,15 +247,20 @@ serve(async () => {
         .eq("id", tracking.id);
       continue;
     }
-    const identityAwareMatch = preferredIdentityUsername
-      ? flights.find((flight) =>
-        normalizeCallsign(flight?.callsign) === callsign &&
+    let identityAwareMatch: any = null;
+    let callsignOnlyMatch: any = null;
+    for (const flight of flights) {
+      if (normalizeCallsign(flight?.callsign) !== callsign) continue;
+      if (!callsignOnlyMatch) callsignOnlyMatch = flight;
+      if (
+        preferredIdentityUsername &&
         readFlightIdentityUsername(flight) === preferredIdentityUsername
-      )
-      : null;
-    const match = identityAwareMatch || flights.find((flight) =>
-      normalizeCallsign(flight?.callsign) === callsign
-    );
+      ) {
+        identityAwareMatch = flight;
+        break;
+      }
+    }
+    const match = identityAwareMatch || callsignOnlyMatch;
 
     const activeMatch = match || findReconciledFlight(tracking, flights, preferredIdentityUsername);
 
