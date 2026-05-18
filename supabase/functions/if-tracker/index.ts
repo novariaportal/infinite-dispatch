@@ -13,6 +13,8 @@ const NM_PER_KM = 0.539957;
 const MIN_VALID_COMPLETION_DISTANCE_NM = 25;
 const MAX_VALID_COMPLETION_ALT_FT = 5000;
 const MAX_VALID_COMPLETION_GS_KTS = 260;
+const MISSING_COMPLETION_GRACE_MS = 30 * 60 * 1000;
+const RECONCILE_MAX_DISTANCE_NM = 120;
 const AIRPORT_COORDS: Record<string, { lat: number; lon: number }> = {
   WSSS: { lat: 1.35, lon: 103.99 },
   WIII: { lat: -6.12, lon: 106.66 },
@@ -74,6 +76,63 @@ function haversineNm(
   return km * NM_PER_KM;
 }
 
+function normalizeCallsign(value: unknown) {
+  return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+function callsignFamily(value: unknown) {
+  return normalizeCallsign(value).replace(/[A-Z]$/, "");
+}
+
+function readDateMs(value: unknown) {
+  const timestamp = Date.parse(String(value || ""));
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function findReconciledFlight(tracking: any, flights: any[]) {
+  if (typeof tracking.last_lat !== "number" || typeof tracking.last_lng !== "number") {
+    return null;
+  }
+
+  const trackedCallsign = normalizeCallsign(tracking.callsign);
+  const trackedFamily = callsignFamily(trackedCallsign);
+  if (!trackedCallsign) return null;
+
+  let bestMatch: any = null;
+  let bestDistanceNm = Number.POSITIVE_INFINITY;
+
+  for (const flight of flights) {
+    const flightCallsign = normalizeCallsign(flight?.callsign);
+    if (!flightCallsign) continue;
+
+    const flightFamily = callsignFamily(flightCallsign);
+    const familyCompatible = trackedFamily &&
+      flightFamily &&
+      (trackedFamily === flightFamily ||
+        trackedCallsign.startsWith(flightFamily) ||
+        flightCallsign.startsWith(trackedFamily));
+    if (!familyCompatible) continue;
+
+    const latitude = Number(flight?.latitude);
+    const longitude = Number(flight?.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
+
+    const distanceNm = haversineNm(
+      tracking.last_lat,
+      tracking.last_lng,
+      latitude,
+      longitude
+    );
+    if (distanceNm > RECONCILE_MAX_DISTANCE_NM) continue;
+    if (distanceNm >= bestDistanceNm) continue;
+
+    bestDistanceNm = distanceNm;
+    bestMatch = flight;
+  }
+
+  return bestMatch;
+}
+
 serve(async () => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -83,7 +142,7 @@ serve(async () => {
 
   const { data: sessions, error } = await supabase
     .from("flight_tracking")
-    .select("id, user_id, callsign, origin, destination, status, server_type, last_lat, last_lng, last_alt, last_speed")
+    .select("id, user_id, callsign, origin, destination, status, server_type, last_lat, last_lng, last_alt, last_speed, updated_at")
     .eq("status", "enroute");
 
   if (error) {
@@ -142,23 +201,34 @@ serve(async () => {
   }
 
   for (const tracking of sessions) {
+    const nowIso = new Date().toISOString();
     const serverType = tracking.server_type || "casual";
     const flights = flightsByServerType[serverType] || [];
-    const callsign = tracking.callsign?.toUpperCase();
+    const callsign = normalizeCallsign(tracking.callsign);
+    if (!callsign) {
+      await supabase
+        .from("flight_tracking")
+        .update({ updated_at: nowIso })
+        .eq("id", tracking.id);
+      continue;
+    }
     const match = flights.find((flight) =>
-      flight?.callsign?.toUpperCase() === callsign
+      normalizeCallsign(flight?.callsign) === callsign
     );
 
-    if (match) {
+    const activeMatch = match || findReconciledFlight(tracking, flights);
+
+    if (activeMatch) {
       await supabase
         .from("flight_tracking")
         .update({
           status: "enroute",
-          last_lat: match.latitude,
-          last_lng: match.longitude,
-          last_alt: match.altitude,
-          last_speed: match.groundspeed,
-          updated_at: new Date().toISOString()
+          callsign: normalizeCallsign(activeMatch.callsign) || callsign,
+          last_lat: activeMatch.latitude,
+          last_lng: activeMatch.longitude,
+          last_alt: activeMatch.altitude,
+          last_speed: activeMatch.groundspeed,
+          updated_at: nowIso
         })
         .eq("id", tracking.id);
     } else {
@@ -167,7 +237,6 @@ serve(async () => {
         typeof tracking.last_lng === "number";
 
       let isValidatedCompletion = false;
-      let distanceRemainingNm: number | null = null;
 
       if (
         hasSeenLivePosition &&
@@ -198,13 +267,12 @@ serve(async () => {
         }
       }
 
-      if (!isValidatedCompletion) {
-        await supabase
-          .from("flight_tracking")
-          .update({
-            updated_at: new Date().toISOString()
-          })
-          .eq("id", tracking.id);
+      const lastSeenMs = readDateMs(tracking.updated_at);
+      const hasGraceElapsed = lastSeenMs != null
+        ? Date.now() - lastSeenMs >= MISSING_COMPLETION_GRACE_MS
+        : false;
+
+      if (!isValidatedCompletion || !hasGraceElapsed) {
         continue;
       }
 
@@ -235,7 +303,7 @@ serve(async () => {
         console.error(`Failed to load profile for tracking ${tracking.id}:`, profileError.message);
         await supabase
           .from("flight_tracking")
-          .update({ updated_at: new Date().toISOString() })
+          .update({ updated_at: nowIso })
           .eq("id", tracking.id);
         continue;
       }
@@ -243,7 +311,7 @@ serve(async () => {
       if (!profile) {
         await supabase
           .from("flight_tracking")
-          .update({ updated_at: new Date().toISOString() })
+          .update({ updated_at: nowIso })
           .eq("id", tracking.id);
         continue;
       }
@@ -264,7 +332,7 @@ serve(async () => {
         console.error(`Failed to apply reward for tracking ${tracking.id}:`, rewardError.message);
         await supabase
           .from("flight_tracking")
-          .update({ updated_at: new Date().toISOString() })
+          .update({ updated_at: nowIso })
           .eq("id", tracking.id);
         continue;
       }
@@ -273,7 +341,7 @@ serve(async () => {
         .from("flight_tracking")
         .update({
           status: "completed",
-          updated_at: new Date().toISOString()
+          updated_at: nowIso
         })
         .eq("id", tracking.id);
     }
