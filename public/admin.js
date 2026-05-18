@@ -27,6 +27,13 @@ const PROFILE_SELECT_BASE_FIELDS = 'id, username, hours, job_slots, license, pos
 const PROFILE_SELECT_REFRESH_FIELDS = 'job_refreshes_used, job_refresh_window_started_at, job_refresh_admin_override';
 const PROFILE_SELECT_IDENTITY_FIELDS = 'discourse_username, ifc_link_status, ifc_link_code, ifc_link_verified_at, ifc_link_last_checked_at, ifc_link_last_error';
 const PROFILE_SELECT_ALL_FIELDS = `${PROFILE_SELECT_BASE_FIELDS}, ${PROFILE_SELECT_REFRESH_FIELDS}, ${PROFILE_SELECT_IDENTITY_FIELDS}`;
+const SUPPORTED_BASE_AIRPORTS = [
+  'WSSS', 'WIII', 'VTBS', 'WMKK', 'RJTT', 'RJAA', 'VHHH', 'ZBAA', 'YSSY', 'YMML', 'YBBN', 'YPPH', 'YPAD',
+  'NZAA', 'EGLL', 'EGKK', 'LFPG', 'EHAM', 'OMDB', 'OTHH', 'OJED', 'OERK', 'OMAA', 'LTBA', 'EDDF', 'LFPO',
+  'RKSI', 'RJBB', 'KJFK', 'KLAX', 'KSFO', 'KSEA', 'KMIA', 'KORD'
+];
+const SUPPORTED_BASE_AIRPORT_SET = new Set(SUPPORTED_BASE_AIRPORTS);
+const BASE_AIRPORT_DATALIST_ID = 'supportedBaseAirportsList';
 
 function formatRatings(raw) {
   return (raw || '')
@@ -63,6 +70,18 @@ function getLicenseOptions(profile) {
     return [profile.license, ...baseOptions];
   }
   return baseOptions;
+}
+
+function ensureBaseAirportDatalist() {
+  if (document.getElementById(BASE_AIRPORT_DATALIST_ID)) return;
+  const datalist = document.createElement('datalist');
+  datalist.id = BASE_AIRPORT_DATALIST_ID;
+  SUPPORTED_BASE_AIRPORTS.forEach((icao) => {
+    const option = document.createElement('option');
+    option.value = icao;
+    datalist.appendChild(option);
+  });
+  document.body.appendChild(datalist);
 }
 
 function isMissingJobRefreshColumnError(error) {
@@ -154,8 +173,8 @@ function profileCard(profile) {
     <select id="employer_${profile.id}">
       ${buildSelectOptions(employerOptions, profile.employer || '')}
     </select>
-    <label>Base Airport</label>
-    <input id="base_${profile.id}" type="text" value="${profile.base_airport || ''}">
+    <label>Base Airport (supported ICAO only)</label>
+    <input id="base_${profile.id}" type="text" list="${BASE_AIRPORT_DATALIST_ID}" maxlength="4" value="${profile.base_airport || ''}">
     <label>Job Refreshes Used (36h window)</label>
     <input id="refreshes_${profile.id}" type="number" min="0" value="${refreshesUsed}">
     <label>Job Refresh Window Start (ISO or blank)</label>
@@ -246,6 +265,12 @@ async function loadProfiles() {
 }
 
 async function saveProfile(profileId) {
+  const baseAirport = (document.getElementById(`base_${profileId}`).value || '').trim().toUpperCase();
+  if (baseAirport && !SUPPORTED_BASE_AIRPORT_SET.has(baseAirport)) {
+    alert(`Unsupported base airport ICAO "${baseAirport}". Use one of the supported airports in the suggestion list.`);
+    return;
+  }
+
   const updates = {
     hours: Number(document.getElementById(`hours_${profileId}`).value || 0),
     job_slots: Number(document.getElementById(`slots_${profileId}`).value || 0),
@@ -255,7 +280,7 @@ async function saveProfile(profileId) {
     type_ratings: formatRatings(document.getElementById(`ratings_${profileId}`).value),
     balance: Number(document.getElementById(`balance_${profileId}`).value || 0),
     employer: (document.getElementById(`employer_${profileId}`).value || '').trim(),
-    base_airport: (document.getElementById(`base_${profileId}`).value || '').trim().toUpperCase(),
+    base_airport: baseAirport,
     job_refreshes_used: Math.max(0, Number(document.getElementById(`refreshes_${profileId}`).value || 0)),
     job_refresh_window_started_at: (document.getElementById(`refreshWindow_${profileId}`).value || '').trim() || null,
     job_refresh_admin_override: Boolean(document.getElementById(`refreshOverride_${profileId}`).checked),
@@ -306,3 +331,5 @@ async function saveProfile(profileId) {
 window.unlockAdmin = unlockAdmin;
 window.loadProfiles = loadProfiles;
 window.saveProfile = saveProfile;
+
+ensureBaseAirportDatalist();
