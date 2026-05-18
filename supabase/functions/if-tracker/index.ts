@@ -267,7 +267,7 @@ serve(async () => {
         }
       }
 
-      const flightStartMs = readDateMs(tracking.created_at) ?? readDateMs(tracking.updated_at);
+      const flightStartMs = readDateMs(tracking.created_at);
       const hasGraceElapsed = flightStartMs != null
         ? Date.now() - flightStartMs >= ENROUTE_COMPLETION_GRACE_FROM_START_MS
         : false;
