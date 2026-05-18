@@ -1041,6 +1041,7 @@ async function checkDiscourseVerificationFlow() {
     const updates = isVerified
       ? {
         ifc_link_status: 'verified',
+        ifc_link_code: null,
         ifc_link_verified_at: nowIso,
         ifc_link_last_checked_at: nowIso,
         ifc_link_last_error: null

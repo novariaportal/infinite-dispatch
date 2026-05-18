@@ -60,6 +60,7 @@
         <button id="saveIfcBtn">Save IFC Fields</button>
         <button id="startIfcBtn">Start IFC Verification</button>
         <button id="checkIfcBtn">Check IFC About Me</button>
+        <button id="verifyIfcBypassBtn">Debug: Set Verified (No Check)</button>
       </div>
       <div id="ifcStatusBar" class="mono muted">IFC link debug ready.</div>
       <pre id="ifcDump" class="mono">IFC profile details appear here.</pre>
@@ -134,6 +135,8 @@
     const selectedIdInput = document.getElementById('selectedId');
     const ifcStatusBarEl = document.getElementById('ifcStatusBar');
     const ifcDumpEl = document.getElementById('ifcDump');
+    const isLocalDebugHost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+    const allowDebugVerifyBypass = isLocalDebugHost || window.ALLOW_IFC_DEBUG_BYPASS === true;
     const MIN_CALLSIGN_SUFFIX = 100;
     const MAX_CALLSIGN_SUFFIX = 999;
     const DEBUG_TRACKING_TABLE = 'flight_tracking_debug';
@@ -337,6 +340,29 @@
       }
     }
 
+    async function debugSetIfcVerifiedWithoutCheck() {
+      if (!currentUser) return setIfcStatus('Sign in first.', true);
+      if (!allowDebugVerifyBypass) {
+        return setIfcStatus('Debug verify bypass is disabled on this environment.', true);
+      }
+      try {
+        const username = normalizeIfcUsername(document.getElementById('ifcUsername').value || currentProfile?.discourse_username || '');
+        if (!username) return setIfcStatus('Enter a valid IFC username first.', true);
+        const nowIso = new Date().toISOString();
+        await saveIfcFields({
+          discourse_username: username,
+          ifc_link_status: 'verified',
+          ifc_link_code: null,
+          ifc_link_verified_at: nowIso,
+          ifc_link_last_checked_at: nowIso,
+          ifc_link_last_error: null
+        }, `Debug override: marked @${username} as verified without external check.`);
+        ifcDumpEl.textContent = `Debug override applied.\nIFC username: @${username}\nVerification code cleared.\n\n${JSON.stringify(currentProfile || {}, null, 2)}`;
+      } catch (err) {
+        setIfcStatus(`Debug verify override failed: ${err.message}`, true);
+      }
+    }
+
     function ensureClient() {
       const looksLikePlaceholder = /YOUR_SUPABASE|YOUR_PUBLISHABLE/i.test(`${supabaseUrl} ${supabasePublishableKey}`);
       if (!supabaseUrl || !supabasePublishableKey || looksLikePlaceholder) {
@@ -534,6 +560,7 @@
     document.getElementById('saveIfcBtn').addEventListener('click', saveIfcProfileFromInputs);
     document.getElementById('startIfcBtn').addEventListener('click', startIfcVerification);
     document.getElementById('checkIfcBtn').addEventListener('click', checkIfcVerification);
+    document.getElementById('verifyIfcBypassBtn').addEventListener('click', debugSetIfcVerifiedWithoutCheck);
     bootstrap();
   </script>
 </body>

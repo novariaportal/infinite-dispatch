@@ -84,12 +84,36 @@ function callsignFamily(value: unknown) {
   return normalizeCallsign(value).replace(/[A-Z]$/, "");
 }
 
+function normalizeIdentityUsername(value: unknown) {
+  return String(value || "").trim().replace(/^@+/, "").toLowerCase() || null;
+}
+
+function readFlightIdentityUsername(flight: any) {
+  const candidates = [
+    flight?.username,
+    flight?.userName,
+    flight?.pilotUsername,
+    flight?.pilotName,
+    flight?.displayName,
+    flight?.nickname
+  ];
+  for (const candidate of candidates) {
+    const normalized = normalizeIdentityUsername(candidate);
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
 function readDateMs(value: unknown) {
   const timestamp = Date.parse(String(value || ""));
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 
-function findReconciledFlight(tracking: any, flights: any[]) {
+function findReconciledFlight(
+  tracking: any,
+  flights: any[],
+  preferredIdentityUsername: string | null = null
+) {
   if (typeof tracking.last_lat !== "number" || typeof tracking.last_lng !== "number") {
     return null;
   }
@@ -98,6 +122,8 @@ function findReconciledFlight(tracking: any, flights: any[]) {
   const trackedFamily = callsignFamily(trackedCallsign);
   if (!trackedCallsign) return null;
 
+  let bestIdentityMatch: any = null;
+  let bestIdentityDistanceNm = Number.POSITIVE_INFINITY;
   let bestMatch: any = null;
   let bestDistanceNm = Number.POSITIVE_INFINITY;
 
@@ -124,13 +150,21 @@ function findReconciledFlight(tracking: any, flights: any[]) {
       longitude
     );
     if (distanceNm > RECONCILE_MAX_DISTANCE_NM) continue;
+    const liveIdentity = readFlightIdentityUsername(flight);
+    if (
+      preferredIdentityUsername &&
+      liveIdentity === preferredIdentityUsername &&
+      distanceNm < bestIdentityDistanceNm
+    ) {
+      bestIdentityDistanceNm = distanceNm;
+      bestIdentityMatch = flight;
+    }
     if (distanceNm >= bestDistanceNm) continue;
-
     bestDistanceNm = distanceNm;
     bestMatch = flight;
   }
 
-  return bestMatch;
+  return bestIdentityMatch || bestMatch;
 }
 
 serve(async () => {
@@ -142,7 +176,7 @@ serve(async () => {
 
   const { data: sessions, error } = await supabase
     .from("flight_tracking")
-    .select("id, user_id, callsign, origin, destination, status, server_type, last_lat, last_lng, last_alt, last_speed, updated_at, created_at")
+    .select("id, user_id, callsign, origin, destination, status, server_type, identity_link_username, last_lat, last_lng, last_alt, last_speed, updated_at, created_at")
     .eq("status", "enroute");
 
   if (error) {
@@ -205,6 +239,7 @@ serve(async () => {
     const serverType = tracking.server_type || "casual";
     const flights = flightsByServerType[serverType] || [];
     const callsign = normalizeCallsign(tracking.callsign);
+    const preferredIdentityUsername = normalizeIdentityUsername(tracking.identity_link_username);
     if (!callsign) {
       await supabase
         .from("flight_tracking")
@@ -212,11 +247,22 @@ serve(async () => {
         .eq("id", tracking.id);
       continue;
     }
-    const match = flights.find((flight) =>
-      normalizeCallsign(flight?.callsign) === callsign
-    );
+    let identityAwareMatch: any = null;
+    let callsignOnlyMatch: any = null;
+    for (const flight of flights) {
+      if (normalizeCallsign(flight?.callsign) !== callsign) continue;
+      if (!callsignOnlyMatch) callsignOnlyMatch = flight;
+      if (
+        preferredIdentityUsername &&
+        readFlightIdentityUsername(flight) === preferredIdentityUsername
+      ) {
+        identityAwareMatch = flight;
+        break;
+      }
+    }
+    const match = identityAwareMatch || callsignOnlyMatch;
 
-    const activeMatch = match || findReconciledFlight(tracking, flights);
+    const activeMatch = match || findReconciledFlight(tracking, flights, preferredIdentityUsername);
 
     if (activeMatch) {
       await supabase
