@@ -308,6 +308,15 @@ function formatJobGenerationFailureText(failure) {
   return `Error Code: ${failure.code}${attempts}${detail}`;
 }
 
+function escapeHtml(value = '') {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function formatAirlabsStatusText() {
   const detail = lastAirlabsHealth.detail ? ` — ${lastAirlabsHealth.detail}` : '';
   return `AirLabs Status: ${lastAirlabsHealth.code}${detail}`;
@@ -320,7 +329,9 @@ function buildNoJobsMessage() {
     'No jobs available for your current type ratings. Try refreshing or buying another type rating.',
     detailLine,
     airlabsLine
-  ].filter(Boolean);
+  ]
+    .filter(Boolean)
+    .map((line) => escapeHtml(line));
   return `<div class="list-item muted">${lines.join('<br>')}</div>`;
 }
 
@@ -632,7 +643,7 @@ async function fetchAirlabsRoutes(params = {}) {
     lastAirlabsHealth = {
       code: 'AIRLABS_FETCH_FAILED',
       ok: false,
-      detail: error?.message || String(error)
+      detail: 'Network request to AirLabs edge function failed.'
     };
     return { data: [], request: { has_more: false } };
   }
