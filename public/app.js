@@ -2282,7 +2282,7 @@ function updateStartTrackingButtonVisibility() {
   if (!startTrackingBtn) return;
 
   const hasGeneratedDispatch = hasGeneratedDispatchRoute();
-  const canStartFromSimBriefOnly = canStartTrackingFromSimBriefOnly();
+  const canStartFromSimBriefOnly = canStartTrackingFromSimBriefOnly(hasGeneratedDispatch);
   const nextLabel = canStartFromSimBriefOnly ? 'Start Flight Tracking (SimBrief)' : 'Start Flight Tracking';
 
   startTrackingBtn.style.display = (hasGeneratedDispatch || canStartFromSimBriefOnly) ? 'block' : 'none';
@@ -2293,8 +2293,7 @@ function hasGeneratedDispatchRoute() {
   return Boolean(latestGeneratedDispatch?.legs?.length);
 }
 
-function canStartTrackingFromSimBriefOnly() {
-  const hasGeneratedDispatch = hasGeneratedDispatchRoute();
+function canStartTrackingFromSimBriefOnly(hasGeneratedDispatch = hasGeneratedDispatchRoute()) {
   const hasSimBriefPlan = Boolean(latestSimbriefPlan?.general);
   const simBriefOnlyAllowed = Boolean(currentProfile?.simbrief_tracking_admin_enabled);
   return !hasGeneratedDispatch && simBriefOnlyAllowed && hasSimBriefPlan;
@@ -2303,7 +2302,7 @@ function canStartTrackingFromSimBriefOnly() {
 async function dispatchFlight() {
   const hasGeneratedDispatch = hasGeneratedDispatchRoute();
   const simBriefOnlyAllowed = Boolean(currentProfile?.simbrief_tracking_admin_enabled);
-  const canStartFromSimBriefOnly = canStartTrackingFromSimBriefOnly();
+  const canStartFromSimBriefOnly = canStartTrackingFromSimBriefOnly(hasGeneratedDispatch);
 
   if (!hasGeneratedDispatch && !canStartFromSimBriefOnly) {
     if (simBriefOnlyAllowed) {
