@@ -33,6 +33,8 @@ const MS_PER_HOUR = 60 * MS_PER_MINUTE;
 const JOB_MARKET_REFRESH_LIMIT = 2;
 const JOB_MARKET_REFRESH_WINDOW_MS = 36 * MS_PER_HOUR;
 const MAX_JOB_GENERATION_ATTEMPTS_PER_CYCLE = 20;
+const TRACKING_START_LABEL_DEFAULT = 'Start Flight Tracking';
+const TRACKING_START_LABEL_SIMBRIEF = 'Start Flight Tracking (SimBrief)';
 const LICENSE_LEVELS = ['PPL', 'CPL', 'MPL', 'ATPL'];
 const LICENSE_META = {
   PPL: { position: 'FO', multiplier: 1.0 },
@@ -2283,7 +2285,7 @@ function updateStartTrackingButtonVisibility() {
 
   const hasGeneratedDispatch = hasGeneratedDispatchRoute();
   const canStartFromSimBriefOnly = canStartTrackingFromSimBriefOnly(hasGeneratedDispatch);
-  const nextLabel = canStartFromSimBriefOnly ? 'Start Flight Tracking (SimBrief)' : 'Start Flight Tracking';
+  const nextLabel = canStartFromSimBriefOnly ? TRACKING_START_LABEL_SIMBRIEF : TRACKING_START_LABEL_DEFAULT;
 
   startTrackingBtn.style.display = (hasGeneratedDispatch || canStartFromSimBriefOnly) ? 'block' : 'none';
   if (startTrackingBtn.innerText !== nextLabel) startTrackingBtn.innerText = nextLabel;
@@ -2293,7 +2295,7 @@ function hasGeneratedDispatchRoute() {
   return Boolean(latestGeneratedDispatch?.legs?.length);
 }
 
-function canStartTrackingFromSimBriefOnly(hasGeneratedDispatch = hasGeneratedDispatchRoute()) {
+function canStartTrackingFromSimBriefOnly(hasGeneratedDispatch) {
   const hasSimBriefPlan = Boolean(latestSimbriefPlan?.general);
   const simBriefOnlyAllowed = Boolean(currentProfile?.simbrief_tracking_admin_enabled);
   return !hasGeneratedDispatch && simBriefOnlyAllowed && hasSimBriefPlan;
