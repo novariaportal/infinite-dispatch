@@ -1610,7 +1610,6 @@ async function generatePassengerJob(index, failureCounter = null) {
         } else {
           recordFailureCode(failureCounter, 'JOBGEN_AIRLABS_UNAVAILABLE');
         }
-        recordFailureCode(failureCounter, 'JOBGEN_CURATED_FALLBACK_FAILED');
         continue;
       }
       distanceNm = randomDistanceForAircraft(aircraft.name);
