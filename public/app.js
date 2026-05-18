@@ -2288,7 +2288,7 @@ function updateStartTrackingButtonVisibility() {
   const nextLabel = canStartFromSimBriefOnly ? TRACKING_START_LABEL_SIMBRIEF : TRACKING_START_LABEL_DEFAULT;
 
   startTrackingBtn.style.display = (hasGeneratedDispatch || canStartFromSimBriefOnly) ? 'block' : 'none';
-  if (startTrackingBtn.innerText !== nextLabel) startTrackingBtn.innerText = nextLabel;
+  startTrackingBtn.innerText = nextLabel;
 }
 
 function hasGeneratedDispatchRoute() {
@@ -2308,7 +2308,7 @@ async function dispatchFlight() {
 
   if (!hasGeneratedDispatch && !canStartFromSimBriefOnly) {
     if (simBriefOnlyAllowed) {
-      alert('Generate a dispatch first, or import a SimBrief plan.');
+      alert('Generate a dispatch first, or fetch a SimBrief plan.');
     } else {
       alert('Generate a dispatch first.');
     }
