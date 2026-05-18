@@ -304,7 +304,7 @@ function getTopFailureCode(failureCounter) {
 function formatJobGenerationFailureText(failure) {
   if (!failure?.code) return '';
   const detail = failure.detail ? ` — ${failure.detail}` : '';
-  const attempts = Number.isFinite(Number(failure.attempts)) ? ` (attempts: ${failure.attempts})` : '';
+  const attempts = Number.isFinite(failure.attempts) ? ` (attempts: ${failure.attempts})` : '';
   return `Error Code: ${failure.code}${attempts}${detail}`;
 }
 
@@ -1603,13 +1603,13 @@ async function generatePassengerJob(index, failureCounter = null) {
       seedLeg = pickRandom(airlabsLegs);
       distanceNm = haversineNm(seedLeg.origin, seedLeg.destination);
     } else {
-      if (lastAirlabsHealth.ok) {
-        recordFailureCode(failureCounter, 'JOBGEN_AIRLABS_NO_MATCHING_ROUTES');
-      } else {
-        recordFailureCode(failureCounter, 'JOBGEN_AIRLABS_UNAVAILABLE');
-      }
       const previewLegs = buildCuratedRoute(base, airline, aircraft.displayName || aircraft.name);
       if (previewLegs.length < 2 || previewLegs.length > 3) {
+        if (lastAirlabsHealth.ok) {
+          recordFailureCode(failureCounter, 'JOBGEN_AIRLABS_NO_MATCHING_ROUTES');
+        } else {
+          recordFailureCode(failureCounter, 'JOBGEN_AIRLABS_UNAVAILABLE');
+        }
         recordFailureCode(failureCounter, 'JOBGEN_CURATED_FALLBACK_FAILED');
         continue;
       }
