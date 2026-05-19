@@ -753,29 +753,31 @@ async function buildAirlabsDispatchLegs(base, airline, aircraftName, seedLeg = n
   const preferredSeed = seedLeg && routeWithinRange(seedLeg.origin, seedLeg.destination, maxRangeNm)
     ? firstLegCandidates.find((leg) => leg.origin === seedLeg.origin && leg.destination === seedLeg.destination)
     : null;
-  const firstLeg = preferredSeed || pickRandom(firstLegCandidates);
-  if (!firstLeg) return [];
+  const firstLegPool = preferredSeed
+    ? [preferredSeed, ...shuffleArray(firstLegCandidates.filter((leg) => leg !== preferredSeed))]
+    : shuffleArray(firstLegCandidates);
 
-  const directReturnCandidates = await fetchAirlabsCandidateLegs({
-    dep_icao: firstLeg.destination,
-    arr_icao: base,
-    airline,
-    maxRangeNm
-  });
-  if (directReturnCandidates.length) {
-    return [firstLeg, pickRandom(directReturnCandidates)];
-  }
+  for (const firstLeg of firstLegPool) {
+    const directReturnCandidates = await fetchAirlabsCandidateLegs({
+      dep_icao: firstLeg.destination,
+      arr_icao: base,
+      airline,
+      maxRangeNm
+    });
+    if (directReturnCandidates.length) {
+      return [firstLeg, pickRandom(directReturnCandidates)];
+    }
 
-  const secondLegCandidates = await fetchAirlabsCandidateLegs({
-    dep_icao: firstLeg.destination,
-    airline,
-    maxRangeNm
-  });
-  const shuffledSecondLegs = shuffleArray(
-    secondLegCandidates.filter((leg) => leg.destination !== base)
-  );
+    const secondLegCandidates = await fetchAirlabsCandidateLegs({
+      dep_icao: firstLeg.destination,
+      airline,
+      maxRangeNm
+    });
+    const shuffledSecondLegs = shuffleArray(
+      secondLegCandidates.filter((leg) => leg.destination !== base)
+    );
 
-  for (const secondLeg of shuffledSecondLegs) {
+    for (const secondLeg of shuffledSecondLegs) {
     const finalLegCandidates = await fetchAirlabsCandidateLegs({
       dep_icao: secondLeg.destination,
       arr_icao: base,
@@ -785,6 +787,7 @@ async function buildAirlabsDispatchLegs(base, airline, aircraftName, seedLeg = n
     if (finalLegCandidates.length) {
       return [firstLeg, secondLeg, pickRandom(finalLegCandidates)];
     }
+  }
   }
 
   return [];
