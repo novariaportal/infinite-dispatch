@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="Infinite Dispatch">
+  <defs>
+    <linearGradient id="bg" x1="0%" x2="100%" y1="0%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1d4ed8" />
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)" />
+  <circle cx="180" cy="140" r="84" fill="#60a5fa" opacity="0.2" />
+  <circle cx="1060" cy="520" r="110" fill="#93c5fd" opacity="0.14" />
+  <text x="120" y="250" fill="#e2e8f0" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="68" font-weight="700">Infinite Dispatch</text>
+  <text x="120" y="320" fill="#bfdbfe" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="34">Infinite Flight Career Tracker</text>
+  <text x="120" y="400" fill="#dbeafe" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="28">Dynamic jobs • Dispatch routes • Tracking history</text>
+</svg>

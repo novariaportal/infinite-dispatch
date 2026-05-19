@@ -4,7 +4,13 @@ import {
   onThemeChangeFromHeader,
   onGlassToggle,
   onGlassToggleFromHeader,
-  showPage
+  showPage,
+  previewLandingFlow,
+  previewLandingFlowFromKey,
+  quickActionRefreshJobs,
+  quickActionContinueDispatch,
+  quickActionStartTracking,
+  toggleSidebarCollapse
 } from './js/ui-helpers.js';
 import {
   openAuth,
@@ -42,6 +48,8 @@ window.onGlassToggle = onGlassToggle;
 window.onGlassToggleFromHeader = onGlassToggleFromHeader;
 window.openAuth = openAuth;
 window.showPage = showPage;
+window.previewLandingFlow = previewLandingFlow;
+window.previewLandingFlowFromKey = previewLandingFlowFromKey;
 window.login = login;
 window.registerAccount = registerAccount;
 window.logout = logout;
@@ -60,5 +68,9 @@ window.startDiscourseVerificationFlow = startDiscourseVerificationFlow;
 window.confirmIfcCodeAddedThenCheck = confirmIfcCodeAddedThenCheck;
 window.checkDiscourseVerificationFlow = checkDiscourseVerificationFlow;
 window.renderDiagnosticsPage = renderDiagnosticsPage;
+window.quickActionRefreshJobs = quickActionRefreshJobs;
+window.quickActionContinueDispatch = quickActionContinueDispatch;
+window.quickActionStartTracking = quickActionStartTracking;
+window.toggleSidebarCollapse = toggleSidebarCollapse;
 
 window.addEventListener('load', startApp);
