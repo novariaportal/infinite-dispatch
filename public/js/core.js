@@ -774,38 +774,38 @@ async function buildAirlabsDispatchLegs(base, airline, aircraftName, seedLeg = n
   const firstLegPool = preferredSeed
     ? [preferredSeed, ...shuffleArray(firstLegCandidates.filter((leg) => leg !== preferredSeed))]
     : shuffleArray(firstLegCandidates);
+  const thirdLegCacheByDeparture = new Map();
 
   for (const firstLeg of firstLegPool) {
-    const directReturnCandidates = await fetchAirlabsCandidateLegs({
-      dep_icao: firstLeg.destination,
-      arr_icao: base,
-      airline,
-      maxRangeNm
-    });
-    if (directReturnCandidates.length) {
-      return [firstLeg, pickRandom(directReturnCandidates)];
-    }
-
     const secondLegCandidates = await fetchAirlabsCandidateLegs({
       dep_icao: firstLeg.destination,
       airline,
       maxRangeNm
     });
+    const directReturnCandidates = secondLegCandidates.filter((leg) => leg.destination === base);
+    if (directReturnCandidates.length) {
+      return [firstLeg, pickRandom(directReturnCandidates)];
+    }
+
     const shuffledSecondLegs = shuffleArray(
       secondLegCandidates.filter((leg) => leg.destination !== base)
     );
 
     for (const secondLeg of shuffledSecondLegs) {
-    const finalLegCandidates = await fetchAirlabsCandidateLegs({
-      dep_icao: secondLeg.destination,
-      arr_icao: base,
-      airline,
-      maxRangeNm
-    });
-    if (finalLegCandidates.length) {
-      return [firstLeg, secondLeg, pickRandom(finalLegCandidates)];
+      let thirdLegCandidates = thirdLegCacheByDeparture.get(secondLeg.destination);
+      if (!thirdLegCandidates) {
+        thirdLegCandidates = await fetchAirlabsCandidateLegs({
+          dep_icao: secondLeg.destination,
+          airline,
+          maxRangeNm
+        });
+        thirdLegCacheByDeparture.set(secondLeg.destination, thirdLegCandidates);
+      }
+      const finalLegCandidates = thirdLegCandidates.filter((leg) => leg.destination === base);
+      if (finalLegCandidates.length) {
+        return [firstLeg, secondLeg, pickRandom(finalLegCandidates)];
+      }
     }
-  }
   }
 
   return [];
