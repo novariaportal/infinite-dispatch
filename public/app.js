@@ -12,6 +12,7 @@ const GLASS_KEY = 'infinite_dispatch_glass';
 const LIVERY_CACHE_KEY = 'infinite_dispatch_livery_cache_v2';
 const ADMIN_MODE_KEY = 'infinite_dispatch_admin_password_mode';
 const HIDDEN_DIAGNOSTICS_HASH = 'diag-7f3a9c';
+const DIAGNOSTICS_ACCESS_DENIED_MESSAGE = 'Diagnostics access denied: requires signed-in session or admin password mode.';
 
 const LIVERY_API_KEY = 'tyy8znhl0u5kbbb2vuvdhfetmsil041u';
 const INVALID_LIVERY_PATTERN = /generic|special|factory|house|prototype|test|demo|demonstrator|delivery/i;
@@ -78,7 +79,7 @@ let lastLiveryApiHealth = {
   ok: false,
   detail: 'No livery API request attempted yet.'
 };
-let lastDispatchRouteSource = null;
+let previousDispatchRouteSource = null;
 let lastJobGenerationSeed = null;
 let lastJobMarketFailure = null;
 let hasTrackingHistory = false;
@@ -857,8 +858,12 @@ function isAdminPasswordModeEnabled() {
   }
 }
 
+function hasActiveSession() {
+  return Boolean(currentUser);
+}
+
 function isDiagnosticsAccessAllowed() {
-  return Boolean(currentUser) || isAdminPasswordModeEnabled();
+  return hasActiveSession() || isAdminPasswordModeEnabled();
 }
 
 function toHealthLabel(health) {
@@ -901,7 +906,7 @@ function renderDiagnosticsPage(force = false) {
   liveryCacheStatusEl.textContent = cacheKeys.length
     ? `${cacheKeys.length} aircraft cached`
     : 'Empty';
-  routeSourceEl.textContent = latestGeneratedDispatch?.routeSource || lastDispatchRouteSource || 'Not generated';
+  routeSourceEl.textContent = latestGeneratedDispatch?.routeSource || previousDispatchRouteSource || 'Not generated';
   airlabsHealthEl.textContent = toHealthLabel(lastAirlabsHealth);
   ifcProxyHealthEl.textContent = toHealthLabel(lastIfcProxyHealth);
   liveryApiHealthEl.textContent = toHealthLabel(lastLiveryApiHealth);
@@ -918,7 +923,7 @@ function renderDiagnosticsPage(force = false) {
 function tryOpenDiagnosticsFromHash() {
   if (getNormalizedHashValue() !== HIDDEN_DIAGNOSTICS_HASH) return false;
   if (!isDiagnosticsAccessAllowed()) {
-    console.warn('Diagnostics access denied: requires signed-in session or admin password mode.');
+    console.warn(DIAGNOSTICS_ACCESS_DENIED_MESSAGE);
     return false;
   }
   showSection('dashboardSection');
@@ -938,7 +943,7 @@ function showSection(sectionId) {
 function showPage(pageId) {
   let effectivePage = pageId;
   if (pageId === 'diagnosticsPage' && !isDiagnosticsAccessAllowed()) {
-    console.warn('Diagnostics access denied: requires signed-in session or admin password mode.');
+    console.warn(DIAGNOSTICS_ACCESS_DENIED_MESSAGE);
     effectivePage = 'overviewPage';
   }
 
@@ -1548,7 +1553,7 @@ async function fetchAircraftOperators(aircraftId) {
 
     liveryCache[aircraftId] = canonicalOperators;
     lastLiveryApiHealth = {
-      code: 'LIVERY_CACHE_HIT',
+      code: 'LIVERY_CACHE_RETRIEVED',
       ok: true,
       detail: `Loaded livery operators for ${aircraftId} from cache.`
     };
@@ -1966,7 +1971,7 @@ function acceptJob(jobId) {
 
   acceptedJob = job;
   latestGeneratedDispatch = null;
-  lastDispatchRouteSource = null;
+  previousDispatchRouteSource = null;
 
   document.getElementById('acceptedJobDetails').innerHTML = `
     <strong>${job.airline}</strong><br>
@@ -2183,7 +2188,7 @@ async function generateDispatch() {
     routeSource,
     legs: routeLegs
   };
-  lastDispatchRouteSource = routeSource;
+  previousDispatchRouteSource = routeSource;
 
   renderGeneratedDispatch(latestGeneratedDispatch);
 }
@@ -2592,7 +2597,8 @@ function renderOnboardingCard(profile) {
 }
 
 async function initializeDashboard() {
-  if (!currentProfile && !isAdminPasswordModeEnabled()) return;
+  const canAccessDashboard = Boolean(currentProfile) || isAdminPasswordModeEnabled();
+  if (!canAccessDashboard) return;
 
   showSection('dashboardSection');
   showPage('overviewPage');
