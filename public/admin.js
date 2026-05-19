@@ -315,9 +315,6 @@ async function runProfileSelectWithFallback(buildQuery) {
   if (result.error && isMissingJobRefreshColumnError(result.error)) {
     result = await buildQuery(`${PROFILE_SELECT_BASE_FIELDS}, ${PROFILE_SELECT_ACCEPTANCE_FIELDS}, ${PROFILE_SELECT_IDENTITY_FIELDS}`);
   }
-  if (result.error && isMissingJobAcceptanceOverrideColumnError(result.error)) {
-    result = await buildQuery(`${PROFILE_SELECT_BASE_FIELDS}, ${PROFILE_SELECT_IDENTITY_FIELDS}`);
-  }
   if (result.error && isMissingIdentityColumnError(result.error)) {
     result = await buildQuery(`${PROFILE_SELECT_BASE_FIELDS}, ${PROFILE_SELECT_REFRESH_FIELDS}, ${PROFILE_SELECT_ACCEPTANCE_FIELDS}`);
   }

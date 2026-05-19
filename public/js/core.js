@@ -2037,7 +2037,7 @@ function renderJobMarket() {
     item.innerHTML = `
       <div class="list-row"><strong>${normalizeAirlineName(job.airline) || 'Unknown Airline'}</strong><span>$${job.pay.toLocaleString()}</span></div>
       <div class="list-row muted"><span>${job.distanceNm} nm</span><span>Passenger Service: Yes</span></div>
-      <div class="list-row muted"><span>Aircraft assigned in Dispatch after acceptance</span><span>—</span></div>
+      <div class="list-row muted"><span>Aircraft assigned in Dispatch after acceptance</span><span>N/A</span></div>
       <button onclick="acceptJob('${job.id}')">Accept Job</button>
     `;
     list.appendChild(item);
