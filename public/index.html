@@ -237,6 +237,41 @@
               <p id="trackingHistoryEmpty" class="muted">No Infinite Dispatch flights tracked yet.</p>
               <ul id="trackingHistory" class="history-list"></ul>
             </section>
+
+            <section id="diagnosticsPage" class="page diagnostics-page" data-hidden-page="true">
+              <h2>Diagnostics Console</h2>
+              <p class="muted">Hidden read-only diagnostics view for route generation, cache, and API/proxy health checks.</p>
+
+              <div class="diagnostics-grid">
+                <div class="card">
+                  <h3>Runtime Snapshot</h3>
+                  <p class="muted">Aircraft catalog loaded: <strong id="diagCatalogSize">0</strong></p>
+                  <p class="muted">Livery cache: <strong id="diagLiveryCacheStatus">Not loaded</strong></p>
+                  <p class="muted">Active route source: <strong id="diagRouteSource">None</strong></p>
+                </div>
+                <div class="card">
+                  <h3>Health Checks</h3>
+                  <p class="muted">AirLabs: <strong id="diagAirlabsHealth">Not checked</strong></p>
+                  <p class="muted">IFC profile proxy: <strong id="diagIfcProxyHealth">Not checked</strong></p>
+                  <p class="muted">Livery API: <strong id="diagLiveryApiHealth">Not checked</strong></p>
+                </div>
+              </div>
+
+              <div class="card">
+                <h3>Current Profile Data</h3>
+                <pre id="diagProfileDump">No profile data loaded.</pre>
+              </div>
+
+              <div class="card">
+                <h3>Last Job Generation Seed</h3>
+                <pre id="diagJobSeedDump">No seed data available.</pre>
+              </div>
+
+              <div class="card">
+                <h3>API / Proxy Detail JSON</h3>
+                <pre id="diagHealthDump">No health checks recorded yet.</pre>
+              </div>
+            </section>
           </div>
         </div>
       </section>
