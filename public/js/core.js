@@ -774,6 +774,7 @@ async function buildAirlabsDispatchLegs(base, airline, aircraftName, seedLeg = n
   const firstLegPool = preferredSeed
     ? [preferredSeed, ...shuffleArray(firstLegCandidates.filter((leg) => leg !== preferredSeed))]
     : shuffleArray(firstLegCandidates);
+  const thirdLegCacheByDeparture = new Map();
 
   for (const firstLeg of firstLegPool) {
     const secondLegCandidates = await fetchAirlabsCandidateLegs({
@@ -791,11 +792,15 @@ async function buildAirlabsDispatchLegs(base, airline, aircraftName, seedLeg = n
     );
 
     for (const secondLeg of shuffledSecondLegs) {
-      const thirdLegCandidates = await fetchAirlabsCandidateLegs({
-        dep_icao: secondLeg.destination,
-        airline,
-        maxRangeNm
-      });
+      let thirdLegCandidates = thirdLegCacheByDeparture.get(secondLeg.destination);
+      if (!thirdLegCandidates) {
+        thirdLegCandidates = await fetchAirlabsCandidateLegs({
+          dep_icao: secondLeg.destination,
+          airline,
+          maxRangeNm
+        });
+        thirdLegCacheByDeparture.set(secondLeg.destination, thirdLegCandidates);
+      }
       const finalLegCandidates = thirdLegCandidates.filter((leg) => leg.destination === base);
       if (finalLegCandidates.length) {
         return [firstLeg, secondLeg, pickRandom(finalLegCandidates)];
