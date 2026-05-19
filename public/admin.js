@@ -123,7 +123,10 @@ function bindValidationClearHandlers(profileId) {
 }
 
 function parsePositiveInteger(rawValue) {
-  const parsed = Number(rawValue);
+  const raw = String(rawValue ?? '').trim();
+  if (!raw) return null;
+  const parsed = Number(raw);
+  if (Number.isNaN(parsed)) return null;
   return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
@@ -162,12 +165,17 @@ function buildValidatedProfileUpdates(profileId) {
     setFieldError(profileId, 'license', `License must be one of: ${LICENSE_OPTIONS.join(', ')}.`);
     hasErrors = true;
   }
+  // Empty base airport values are intentionally allowed for legacy/optional profile data.
   if (baseAirport && !ICAO_REGEX.test(baseAirport)) {
-    setFieldError(profileId, 'base', 'Base airport must be a valid ICAO code (4 letters, e.g. WSSS).');
+    setFieldError(profileId, 'base', 'Base airport must be a valid ICAO code (4 letters, e.g. KJFK).');
     hasErrors = true;
   }
   if (invalidTokens.length > 0) {
-    setFieldError(profileId, 'ratings', 'Type ratings may only include letters, numbers, "/" or "-".');
+    setFieldError(
+      profileId,
+      'ratings',
+      `Invalid ratings: ${invalidTokens.join(', ')}. Use only letters, numbers, "/" or "-".`
+    );
     hasErrors = true;
   }
 

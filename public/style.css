@@ -549,6 +549,11 @@ pre {
 
 .field-error-visible {
   color: var(--danger);
+  font-weight: 600;
+}
+
+.field-error-visible::before {
+  content: '⚠ ';
 }
 
 input[aria-invalid='true'],
@@ -592,7 +597,7 @@ select[aria-invalid='true'] {
   }
 }
 
-@media (prefers-reduced-motion: reduce), (update: slow), (hover: none) and (pointer: coarse) {
+@media (prefers-reduced-motion: reduce), (prefers-reduced-data: reduce), (update: slow) {
   body.glass-mode .card::after,
   body.glass-mode .topbar::after,
   body.glass-mode header::after,
