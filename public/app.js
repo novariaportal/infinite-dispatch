@@ -845,6 +845,10 @@ function getHashParams() {
   return obj;
 }
 
+function getNormalizedHashValue() {
+  return String(window.location.hash || '').trim().replace(/^#/, '').toLowerCase();
+}
+
 function isAdminPasswordModeEnabled() {
   try {
     return localStorage.getItem(ADMIN_MODE_KEY) === '1';
@@ -908,8 +912,7 @@ function renderDiagnosticsPage() {
 }
 
 function tryOpenDiagnosticsFromHash() {
-  const rawHash = String(window.location.hash || '').trim().replace(/^#/, '').toLowerCase();
-  if (rawHash !== HIDDEN_DIAGNOSTICS_HASH) return false;
+  if (getNormalizedHashValue() !== HIDDEN_DIAGNOSTICS_HASH) return false;
   if (!isDiagnosticsAccessAllowed()) {
     alert('Diagnostics access is restricted to signed-in users or admin password mode.');
     return false;
@@ -930,9 +933,6 @@ function showSection(sectionId) {
 
 function showPage(pageId) {
   let effectivePage = pageId;
-  if (!currentUser && isAdminPasswordModeEnabled() && pageId !== 'diagnosticsPage') {
-    effectivePage = 'diagnosticsPage';
-  }
   if (pageId === 'diagnosticsPage' && !isDiagnosticsAccessAllowed()) {
     alert('Diagnostics access is restricted to signed-in users or admin password mode.');
     effectivePage = 'overviewPage';
@@ -2634,7 +2634,7 @@ window.addEventListener('load', async () => {
     console.warn('Auto-login skipped:', e?.message || e);
   }
 
-  if (isAdminPasswordModeEnabled() && String(window.location.hash || '').replace(/^#/, '').toLowerCase() === HIDDEN_DIAGNOSTICS_HASH) {
+  if (isAdminPasswordModeEnabled() && getNormalizedHashValue() === HIDDEN_DIAGNOSTICS_HASH) {
     await initializeDashboard();
   }
 });
