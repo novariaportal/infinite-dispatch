@@ -108,6 +108,7 @@ body.glass-mode header,
 body.glass-mode .stat-box,
 body.glass-mode .list-item,
 body.glass-mode .history-list li,
+body.glass-mode .sidebar-nav,
 body.glass-mode .sidebar,
 body.glass-mode pre {
   position: relative;
@@ -267,6 +268,7 @@ body.glass-mode .link-btn:hover::after {
   text-decoration: none;
   font-size: 15px;
   font-weight: 600;
+  min-height: 44px;
 }
 
 .link-btn:hover {
@@ -307,6 +309,7 @@ button {
   background: var(--surface-2);
   color: var(--text);
   font-size: 15px;
+  min-height: 44px;
 }
 
 button {
@@ -392,6 +395,7 @@ button.danger {
   background: var(--surface-2);
   color: var(--text);
   border: 1px solid var(--border);
+  min-height: 44px;
 }
 
 .nav-btn.active {
@@ -569,9 +573,16 @@ select[aria-invalid='true'] {
   gap: 6px;
 }
 
+.diagnostics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 12px;
+}
+
 @media (max-width: 960px) {
   .app-shell {
     grid-template-columns: 1fr;
+    gap: 12px;
   }
 
   .auth-split {
@@ -587,13 +598,44 @@ select[aria-invalid='true'] {
   }
 
   .sidebar-nav {
-    flex-direction: row;
-    overflow-x: auto;
-    padding-bottom: 6px;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    margin: 0;
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    z-index: 80;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 8px;
   }
 
   .nav-btn {
-    min-width: 130px;
+    min-width: 0;
+    margin: 0;
+    text-align: center;
+    font-size: 0.82rem;
+    line-height: 1.2;
+    padding: 10px 6px;
+  }
+
+  .sidebar-head {
+    margin-bottom: 12px;
+  }
+
+  .sidebar-settings {
+    display: grid;
+    gap: 8px;
+  }
+
+  .content {
+    padding-bottom: calc(104px + env(safe-area-inset-bottom));
+  }
+
+  .diagnostics-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -656,5 +698,37 @@ select[aria-invalid='true'] {
 
   .input-group {
     flex-direction: column;
+  }
+
+  .stats {
+    grid-template-columns: 1fr;
+  }
+
+  .list-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+}
+
+@media (max-width: 420px) {
+  main {
+    padding: 10px;
+  }
+
+  .card,
+  .stat-box,
+  .list-item {
+    padding: 14px;
+  }
+
+  .sidebar-nav {
+    padding-left: 8px;
+    padding-right: 8px;
+    gap: 6px;
+  }
+
+  .nav-btn {
+    font-size: 0.78rem;
   }
 }
