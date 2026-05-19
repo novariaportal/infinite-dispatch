@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /admin.html
+Disallow: /if-tracking-debug-7f3a9c.html
+Disallow: /diag-7f3a9c
+
+Sitemap: https://infinite-dispatch.vercel.app/sitemap.xml

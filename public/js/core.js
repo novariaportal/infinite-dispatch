@@ -9,7 +9,9 @@ const supabaseClient = window.supabase.createClient(supabaseUrl, supabasePublish
 
 const THEME_KEY = 'infinite_dispatch_theme';
 const GLASS_KEY = 'infinite_dispatch_glass';
+const SIDEBAR_COLLAPSED_KEY = 'infinite_dispatch_sidebar_collapsed';
 const LIVERY_CACHE_KEY = 'infinite_dispatch_livery_cache_v2';
+const RECENT_ACTIVITY_KEY = 'infinite_dispatch_recent_activity';
 const ADMIN_MODE_KEY = 'infinite_dispatch_admin_password_mode';
 const HIDDEN_DIAGNOSTICS_HASH = 'diag-7f3a9c';
 const DIAGNOSTICS_ACCESS_DENIED_MESSAGE = 'Diagnostics access denied: requires signed-in session or admin password mode.';
@@ -23,7 +25,6 @@ const BASE_TYPE_RATING_PRICE = 7000;
 const MAX_CALLSIGN_LENGTH = 12;
 const NM_PER_KM = 0.539957;
 const MIN_VALID_TRACKING_SPEED_KTS = 40;
-const NEW_PILOT_HOURS_THRESHOLD = 5;
 const IFC_DISCOURSE_USER_BASE_URL = 'https://community.infiniteflight.com/u/';
 const IFC_VERIFY_CODE_PREFIX = 'ID-LINK-';
 const AIRLABS_MAX_LIMIT = 50;
@@ -83,6 +84,8 @@ let previousDispatchRouteSource = null;
 let lastJobGenerationSeed = null;
 let lastJobMarketFailure = null;
 let hasTrackingHistory = false;
+let hasCompletedTrackedFlight = false;
+let recentActivity = [];
 
 const POPULARITY_MULTIPLIER = {
   'Airbus A320': 1.06,
@@ -316,6 +319,89 @@ function getTopFailureCode(failureCounter) {
   if (!entries.length) return null;
   entries.sort((a, b) => b[1] - a[1]);
   return entries[0][0] || null;
+}
+
+function showToast(message, variant = 'info') {
+  const container = document.getElementById('toastContainer');
+  if (!container || !message) return;
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${variant}`;
+  toast.textContent = message;
+  container.appendChild(toast);
+  window.setTimeout(() => toast.classList.add('toast-visible'), 10);
+  window.setTimeout(() => {
+    toast.classList.remove('toast-visible');
+    window.setTimeout(() => toast.remove(), 220);
+  }, 2600);
+}
+
+function restoreRecentActivity() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(RECENT_ACTIVITY_KEY) || '[]');
+    if (!Array.isArray(parsed)) {
+      recentActivity = [];
+      return;
+    }
+    recentActivity = parsed
+      .filter((entry) => entry && typeof entry.label === 'string' && typeof entry.at === 'string')
+      .slice(0, 20);
+  } catch {
+    recentActivity = [];
+  }
+}
+
+function persistRecentActivity() {
+  localStorage.setItem(RECENT_ACTIVITY_KEY, JSON.stringify(recentActivity.slice(0, 20)));
+}
+
+function recordRecentActivity(label) {
+  if (!label) return;
+  recentActivity.unshift({
+    label,
+    at: new Date().toISOString()
+  });
+  recentActivity = recentActivity.slice(0, 20);
+  persistRecentActivity();
+  renderRecentActivity();
+}
+
+function renderRecentActivity() {
+  const host = document.getElementById('recentActivityList');
+  if (!host) return;
+  host.innerHTML = '';
+  if (!recentActivity.length) {
+    host.innerHTML = '<li class="activity-empty">🧭 No activity yet. Accept a job or buy a rating to populate your timeline.</li>';
+    return;
+  }
+  recentActivity.slice(0, 6).forEach((entry) => {
+    const li = document.createElement('li');
+    li.className = 'activity-item';
+    const timeLabel = new Date(entry.at).toLocaleString();
+    li.innerHTML = `<span>${entry.label}</span><span class="muted">${timeLabel}</span>`;
+    host.appendChild(li);
+  });
+}
+
+function setSidebarCollapsed(collapsed) {
+  const shell = document.querySelector('.app-shell');
+  const btn = document.getElementById('sidebarCollapseBtn');
+  if (!shell) return;
+  shell.classList.toggle('sidebar-collapsed', Boolean(collapsed));
+  localStorage.setItem(SIDEBAR_COLLAPSED_KEY, collapsed ? '1' : '0');
+  if (btn) {
+    btn.innerText = collapsed ? 'Expand' : 'Collapse';
+    btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  }
+}
+
+function restoreSidebarCollapsedState() {
+  setSidebarCollapsed(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1');
+}
+
+function toggleSidebarCollapse() {
+  const shell = document.querySelector('.app-shell');
+  if (!shell) return;
+  setSidebarCollapsed(!shell.classList.contains('sidebar-collapsed'));
 }
 
 function formatJobGenerationFailureText(failure) {
@@ -956,6 +1042,39 @@ function showPage(pageId) {
   if (effectivePage === 'diagnosticsPage') renderDiagnosticsPage(true);
 }
 
+function previewLandingFlow(targetPage) {
+  openAuth();
+  showPage(targetPage);
+  showToast('Preview opened in Pilot Console.', 'info');
+}
+
+function previewLandingFlowFromKey(event, targetPage) {
+  if (!event) return;
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    previewLandingFlow(targetPage);
+  }
+}
+
+async function quickActionRefreshJobs() {
+  await requestJobMarketRefresh();
+}
+
+function quickActionContinueDispatch() {
+  showPage('dispatchPage');
+  showToast('Dispatch Center ready.', 'info');
+}
+
+async function quickActionStartTracking() {
+  const hasDispatch = hasGeneratedDispatchRoute();
+  if (!hasDispatch && !canStartTrackingFromSimBriefOnly(hasDispatch)) {
+    showPage('dispatchPage');
+    showToast('Generate dispatch or fetch SimBrief before tracking.', 'warning');
+    return;
+  }
+  await dispatchFlight();
+}
+
 function applyAppearanceFromStorage() {
   const savedTheme = localStorage.getItem(THEME_KEY) || 'light';
   const glassEnabled = localStorage.getItem(GLASS_KEY) === '1';
@@ -1296,6 +1415,10 @@ async function checkDiscourseVerificationFlow() {
     alert(isVerified
       ? 'Account link verified successfully.'
       : 'Verification code not found yet. Ensure the exact code is in your IFC profile About Me and retry.');
+    if (isVerified) {
+      recordRecentActivity('Verified IFC account link');
+      showToast('IFC account verified.', 'success');
+    }
   } catch (err) {
     lastIfcProxyHealth = {
       code: 'IFC_PROXY_FETCH_FAILED',
@@ -1393,7 +1516,10 @@ async function logout() {
   acceptedJob = null;
   availableJobs = [];
   airlabsCandidateCache = {};
+  hasTrackingHistory = false;
+  hasCompletedTrackedFlight = false;
   document.getElementById('userInfo').innerText = 'Not logged in';
+  renderQuickActions();
   showSection('landingSection');
 }
 
@@ -1442,8 +1568,25 @@ function renderDashboard(profile) {
   syncDiscourseInputsFromProfile(normalizedProfile);
   renderDiscourseLinkStatus(normalizedProfile);
   renderOnboardingCard(normalizedProfile);
+  renderRecentActivity();
+  renderQuickActions();
   renderJobRefreshStatus();
   renderDiagnosticsPage();
+}
+
+function renderQuickActions() {
+  const continueBtn = document.getElementById('quickContinueDispatchBtn');
+  const trackingBtn = document.getElementById('quickStartTrackingBtn');
+  if (continueBtn) {
+    continueBtn.disabled = !acceptedJob;
+    continueBtn.innerText = acceptedJob ? 'Continue Dispatch' : 'Accept Job First';
+  }
+  if (trackingBtn) {
+    const hasDispatch = hasGeneratedDispatchRoute();
+    const canSimbriefStart = canStartTrackingFromSimBriefOnly(hasDispatch);
+    trackingBtn.disabled = !hasDispatch && !canSimbriefStart;
+    trackingBtn.innerText = hasDispatch || canSimbriefStart ? 'Start Tracking' : 'Generate Dispatch First';
+  }
 }
 
 function restoreLiveryCache() {
@@ -1724,6 +1867,7 @@ async function requestJobMarketRefresh() {
   if (!state.override && state.remaining <= 0) {
     renderJobRefreshStatus();
     alert(`Refresh limit reached (${JOB_MARKET_REFRESH_LIMIT} per 36 hours). You can refresh jobs again after the window resets.`);
+    showToast('Refresh limit reached for current window.', 'warning');
     return;
   }
 
@@ -1736,6 +1880,7 @@ async function requestJobMarketRefresh() {
   }
 
   await loadJobMarket();
+  showToast('Job market refreshed.', 'success');
 }
 
 async function getRatedPassengerAircraft() {
@@ -1857,7 +2002,7 @@ function renderJobMarket() {
 
   if (!availableJobs.length) {
     if (!hasTypeRatings(currentProfile)) {
-      list.innerHTML = '<div class="list-item muted">No type rating found. Buy a type rating in Pilot Shop to unlock jobs.</div>';
+      list.innerHTML = '<div class="list-item empty-illustration"><strong>🛫 No jobs yet</strong><span class="muted">Buy a type rating in Pilot Shop to unlock job offers.</span></div>';
       return;
     }
 
@@ -1878,8 +2023,21 @@ function renderJobMarket() {
   });
 }
 
+function renderJobsSkeleton() {
+  const list = document.getElementById('jobsList');
+  const countEl = document.getElementById('jobsCount');
+  if (!list) return;
+  if (countEl) countEl.innerText = '--';
+  list.innerHTML = `
+    <div class="list-item skeleton-card"></div>
+    <div class="list-item skeleton-card"></div>
+    <div class="list-item skeleton-card"></div>
+  `;
+}
+
 async function loadJobMarket() {
   if (!currentProfile) return;
+  renderJobsSkeleton();
   lastJobMarketFailure = null;
   const baseAirport = resolveProfileBaseAirport(currentProfile);
   if (!baseAirport) {
@@ -1912,6 +2070,7 @@ async function loadJobMarket() {
     };
     renderJobMarket();
     renderJobRefreshStatus();
+    renderQuickActions();
     return;
   }
   availableJobs = [];
@@ -1959,6 +2118,7 @@ async function loadJobMarket() {
 
   renderJobMarket();
   renderJobRefreshStatus();
+  renderQuickActions();
 }
 
 function acceptJob(jobId) {
@@ -1983,6 +2143,9 @@ function acceptJob(jobId) {
   document.getElementById('generateDispatchBtn').disabled = false;
   document.getElementById('dispatchResult').innerText = 'Accepted. Generate Flight / Dispatch when ready.';
   document.getElementById('startTrackingBtn').style.display = 'none';
+  recordRecentActivity(`Accepted ${job.airline} ${job.aircraft} job`);
+  showToast('Job accepted. Continue in Dispatch.', 'success');
+  renderQuickActions();
   if (currentProfile) renderOnboardingCard(currentProfile);
   showPage('dispatchPage');
 }
@@ -2133,6 +2296,7 @@ function renderGeneratedDispatch(routePlan) {
 
   updateStartTrackingButtonVisibility();
   if (currentProfile) renderOnboardingCard(currentProfile);
+  renderQuickActions();
   renderDiagnosticsPage();
 }
 
@@ -2191,6 +2355,8 @@ async function generateDispatch() {
   previousDispatchRouteSource = routeSource;
 
   renderGeneratedDispatch(latestGeneratedDispatch);
+  recordRecentActivity(`Generated ${routeSource === 'airlabs' ? 'AirLabs' : 'curated'} dispatch for ${acceptedJob.aircraft}`);
+  showToast('Dispatch generated successfully.', 'success');
 }
 
 function buildShopCatalog() {
@@ -2296,6 +2462,8 @@ async function buyLicense(licenseCode) {
   renderDashboard(currentProfile);
   renderPilotShop();
   await loadJobMarket();
+  recordRecentActivity(`Purchased ${licenseCode} license`);
+  showToast(`${licenseCode} license purchased.`, 'success');
   alert(`Purchased ${licenseCode}.`);
 }
 
@@ -2341,6 +2509,8 @@ async function buyTypeRating(aircraftId) {
   renderDashboard(currentProfile);
   renderPilotShop();
   await loadJobMarket();
+  recordRecentActivity(`Purchased ${displayName} type rating`);
+  showToast(`${displayName} type rating purchased.`, 'success');
   alert(`Purchased ${displayName} type rating.`);
 }
 
@@ -2516,7 +2686,10 @@ async function dispatchFlight() {
   }
 
   alert('Flight dispatched. Tracking session started.');
+  recordRecentActivity('Started tracking session');
+  showToast('Tracking session started.', 'success');
   document.getElementById('startTrackingBtn').style.display = 'none';
+  renderQuickActions();
   await loadTrackingHistory();
   showPage('historyPage');
 }
@@ -2541,11 +2714,14 @@ async function loadTrackingHistory() {
   list.innerHTML = '';
   if (!data || data.length === 0) {
     hasTrackingHistory = false;
+    hasCompletedTrackedFlight = false;
     empty.style.display = 'block';
+    empty.innerHTML = '🛰️ No flights tracked yet. Start one from Dispatch Center.';
     return;
   }
 
   hasTrackingHistory = true;
+  hasCompletedTrackedFlight = data.some((flight) => String(flight.status || '').toLowerCase() === 'completed');
   empty.style.display = 'none';
   data.forEach((flight) => {
     const item = document.createElement('li');
@@ -2571,29 +2747,46 @@ async function loadTrackingHistory() {
     `;
     list.appendChild(item);
   });
+  renderQuickActions();
   if (currentProfile) renderOnboardingCard(currentProfile);
 }
 
 function renderOnboardingCard(profile) {
   const onboardingList = document.getElementById('onboardingChecklist');
+  const progressText = document.getElementById('onboardingProgressText');
+  const progressFill = document.getElementById('onboardingProgressFill');
+  const badgeRow = document.getElementById('onboardingBadgeRow');
   if (!onboardingList) return;
 
   const hasRatings = Array.isArray(profile?.type_ratings) && profile.type_ratings.length > 0;
-  const isNewPilot = Number(profile?.hours || 0) < NEW_PILOT_HOURS_THRESHOLD;
   const hasBase = !!profile?.base_airport;
   const hasAcceptedJob = !!acceptedJob;
   const hasDispatch = !!latestGeneratedDispatch?.legs?.length;
   const hasIfcLink = String(profile?.ifc_link_status || '') === 'verified';
+  const checks = [
+    { key: 'base', label: 'Set your base airport', done: hasBase, badge: 'Base Ready' },
+    { key: 'ifc', label: 'Verify your Discourse / IFC account link', done: hasIfcLink, badge: 'IFC Linked' },
+    { key: 'job', label: 'Accept a job in Job Market', done: hasAcceptedJob, badge: 'First Job Accepted' },
+    { key: 'dispatch', label: 'Generate dispatch route (2–3 legs)', done: hasDispatch, badge: 'Dispatcher Ready' },
+    { key: 'tracking', label: 'Start tracking from Dispatch Center', done: hasTrackingHistory, badge: 'Tracking Started' },
+    { key: 'rating', label: 'Buy your first type rating in Pilot Shop', done: hasRatings, badge: 'Type Rated' },
+    { key: 'complete', label: 'Complete your first validated flight', done: hasCompletedTrackedFlight, badge: 'First Completion' }
+  ];
+  const completeCount = checks.filter((check) => check.done).length;
+  const progressPercent = Math.round((completeCount / checks.length) * 100);
 
-  onboardingList.innerHTML = `
-    <li>${hasBase ? '✅' : '⬜'} Set your base airport</li>
-    <li>${hasIfcLink ? '✅' : '⬜'} Verify your Discourse / IFC account link</li>
-    <li>${hasAcceptedJob ? '✅' : '⬜'} Accept a job in Job Market</li>
-    <li>${hasDispatch ? '✅' : '⬜'} Generate dispatch route (2–3 legs)</li>
-    <li>${hasTrackingHistory ? '✅' : '⬜'} Start tracking from Dispatch Center</li>
-    <li>${hasRatings ? '✅' : '⬜'} Buy your first type rating in Pilot Shop</li>
-    <li>${isNewPilot ? '⬜' : '✅'} Complete your first validated flight</li>
-  `;
+  if (progressText) progressText.innerText = `${completeCount}/${checks.length} complete`;
+  if (progressFill) progressFill.style.width = `${progressPercent}%`;
+
+  if (badgeRow) {
+    badgeRow.innerHTML = checks
+      .map((check) => `<span class="onboarding-badge ${check.done ? 'onboarding-badge-done' : ''}">${check.done ? '🏅' : '⬜'} ${check.badge}</span>`)
+      .join('');
+  }
+
+  onboardingList.innerHTML = checks
+    .map((check) => `<li>${check.done ? '✅' : '⬜'} ${check.label}</li>`)
+    .join('');
 }
 
 async function initializeDashboard() {
@@ -2601,6 +2794,7 @@ async function initializeDashboard() {
   if (!canAccessDashboard) return;
 
   showSection('dashboardSection');
+  restoreSidebarCollapsedState();
   showPage('overviewPage');
   if (currentProfile) {
     renderDashboard(currentProfile);
@@ -2630,6 +2824,9 @@ async function tryAutoLogin() {
 
 async function startApp() {
   applyAppearanceFromStorage();
+  restoreRecentActivity();
+  renderRecentActivity();
+  restoreSidebarCollapsedState();
 
   try {
     const handled = await handleRecoveryRedirectIfPresent();
@@ -2656,6 +2853,8 @@ export {
   onGlassToggle,
   onGlassToggleFromHeader,
   showPage,
+  previewLandingFlow,
+  previewLandingFlowFromKey,
   openAuth,
   login,
   registerAccount,
@@ -2665,6 +2864,10 @@ export {
   completePasswordRecovery,
   fetchSimBrief,
   dispatchFlight,
+  quickActionRefreshJobs,
+  quickActionContinueDispatch,
+  quickActionStartTracking,
+  toggleSidebarCollapse,
   loadJobMarket,
   requestJobMarketRefresh,
   acceptJob,

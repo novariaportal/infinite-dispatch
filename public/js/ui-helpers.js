@@ -3,5 +3,11 @@ export {
   onThemeChangeFromHeader,
   onGlassToggle,
   onGlassToggleFromHeader,
-  showPage
+  showPage,
+  previewLandingFlow,
+  previewLandingFlowFromKey,
+  quickActionRefreshJobs,
+  quickActionContinueDispatch,
+  quickActionStartTracking,
+  toggleSidebarCollapse
 } from './core.js';

@@ -1,12 +1,25 @@
 const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
+const compression = require('compression');
 const path = require('path');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(compression());
+app.use(express.static(path.join(__dirname, 'public'), {
+  maxAge: '7d',
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html')) {
+      res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+      return;
+    }
+    if (filePath.endsWith('.svg') || filePath.endsWith('.css') || filePath.endsWith('.js')) {
+      res.setHeader('Cache-Control', 'public, max-age=604800, immutable');
+    }
+  }
+}));
 
 // Fetch the secret key from the server environment
 const IF_API_KEY = process.env.IF_API_KEY;

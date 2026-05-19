@@ -4,15 +4,30 @@
     <loc>https://infinite-dispatch.vercel.app/</loc>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
+    <lastmod>2026-05-19</lastmod>
   </url>
   <url>
     <loc>https://infinite-dispatch.vercel.app/user-guide/</loc>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
+    <lastmod>2026-05-19</lastmod>
   </url>
   <url>
     <loc>https://infinite-dispatch.vercel.app/changelog/</loc>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
+    <lastmod>2026-05-19</lastmod>
+  </url>
+  <url>
+    <loc>https://infinite-dispatch.vercel.app/infinite-flight-dispatch-guide/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.65</priority>
+    <lastmod>2026-05-19</lastmod>
+  </url>
+  <url>
+    <loc>https://infinite-dispatch.vercel.app/virtual-airline-career-tracker/</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.65</priority>
+    <lastmod>2026-05-19</lastmod>
   </url>
 </urlset>

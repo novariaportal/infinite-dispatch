@@ -3,8 +3,36 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="description" content="Infinite Dispatch is a virtual airline career tracker for Infinite Flight with dynamic jobs, dispatch planning, and flight tracking.">
+  <link rel="canonical" href="https://infinite-dispatch.vercel.app/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Infinite Dispatch | Infinite Flight Career Tracker">
+  <meta property="og:description" content="Dispatch your Infinite Flight career with dynamic jobs, route generation, and tracking history.">
+  <meta property="og:url" content="https://infinite-dispatch.vercel.app/">
+  <meta property="og:image" content="https://infinite-dispatch.vercel.app/og-image.svg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Infinite Dispatch | Infinite Flight Career Tracker">
+  <meta name="twitter:description" content="Build your pilot career in Infinite Flight with dispatch planning and progress tracking.">
+  <meta name="twitter:image" content="https://infinite-dispatch.vercel.app/og-image.svg">
   <title>Infinite Dispatch</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
   <link rel="stylesheet" href="style.css">
+  <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "Infinite Dispatch",
+      "applicationCategory": "GameApplication",
+      "operatingSystem": "Web",
+      "url": "https://infinite-dispatch.vercel.app/",
+      "description": "A virtual airline career tracker for Infinite Flight with job market generation, dispatch route planning, and flight tracking history.",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      }
+    }
+  </script>
 </head>
 <body>
   <div id="app">
@@ -40,25 +68,43 @@
             <button onclick="openAuth()">Login / Sign-Up</button>
             <a class="header-btn link-btn" href="/user-guide/">Open User Guide</a>
             <a class="header-btn link-btn" href="/changelog/">View Changelog</a>
+            <a class="header-btn link-btn" href="/infinite-flight-dispatch-guide/">Dispatch Guide</a>
+            <a class="header-btn link-btn" href="/virtual-airline-career-tracker/">Career Tracker Overview</a>
           </div>
         </div>
 
         <div class="landing-grid">
-          <article class="card">
-            <h3>Career progression</h3>
+          <article class="card landing-preview" tabindex="0" role="button" onclick="previewLandingFlow('overviewPage')" onkeydown="previewLandingFlowFromKey(event, 'overviewPage')">
+            <h3>Career progression preview</h3>
             <p class="muted">Start as a new pilot, build hours, unlock licenses, and increase your earning multiplier.</p>
+            <div class="preview-shot">
+              <span class="preview-label">Dashboard Snapshot</span>
+              <code>License: CPL • Balance: $12,450 • Hours: 182</code>
+            </div>
           </article>
-          <article class="card">
-            <h3>Dynamic job market</h3>
+          <article class="card landing-preview" tabindex="0" role="button" onclick="previewLandingFlow('jobsPage')" onkeydown="previewLandingFlowFromKey(event, 'jobsPage')">
+            <h3>Dynamic job market preview</h3>
             <p class="muted">Browse rotating airline jobs from your base and choose the flights that match your aircraft ratings.</p>
+            <div class="preview-shot">
+              <span class="preview-label">Job Card Preview</span>
+              <code>SIA • A350-900 • 2,488nm • $44,120</code>
+            </div>
           </article>
-          <article class="card">
-            <h3>Flight planning and tracking</h3>
+          <article class="card landing-preview" tabindex="0" role="button" onclick="previewLandingFlow('dispatchPage')" onkeydown="previewLandingFlowFromKey(event, 'dispatchPage')">
+            <h3>Flight planning and tracking preview</h3>
             <p class="muted">Generate dispatches, optionally import SimBrief, and monitor your Infinite Flight history with route and status details.</p>
+            <div class="preview-shot">
+              <span class="preview-label">Dispatch Preview</span>
+              <code>WSSS → OMDB → EGLL • Source: AirLabs</code>
+            </div>
           </article>
-          <article class="card">
-            <h3>Personalized experience</h3>
+          <article class="card landing-preview" tabindex="0" role="button" onclick="previewLandingFlow('shopPage')" onkeydown="previewLandingFlowFromKey(event, 'shopPage')">
+            <h3>Personalized experience preview</h3>
             <p class="muted">Switch between light and dark mode, and enable liquid glass styling anytime from the top bar.</p>
+            <div class="preview-shot">
+              <span class="preview-label">Shop Preview</span>
+              <code>Type Rating: B787-9 • Price: $9,450</code>
+            </div>
           </article>
         </div>
       </section>
@@ -109,7 +155,10 @@
         <div class="app-shell">
           <aside class="sidebar card">
             <div class="sidebar-head">
-              <h3>Pilot Console</h3>
+              <div class="sidebar-title-row">
+                <h3>Pilot Console</h3>
+                <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" type="button" onclick="toggleSidebarCollapse()" aria-expanded="true">Collapse</button>
+              </div>
               <p id="sidebarEmployer" class="muted">Employer: Unassigned</p>
               <p id="sidebarBase" class="muted">Base: ----</p>
             </div>
@@ -141,6 +190,14 @@
           <div class="content">
             <section id="overviewPage" class="page active">
               <h2>Dashboard</h2>
+              <div class="card">
+                <h3>Quick Actions</h3>
+                <div class="quick-actions">
+                  <button id="quickRefreshJobsBtn" onclick="quickActionRefreshJobs()">Refresh Jobs</button>
+                  <button id="quickContinueDispatchBtn" onclick="quickActionContinueDispatch()">Continue Dispatch</button>
+                  <button id="quickStartTrackingBtn" onclick="quickActionStartTracking()">Start Tracking</button>
+                </div>
+              </div>
               <div class="stats">
                 <div class="stat-box">
                   <div class="label">License</div>
@@ -167,7 +224,19 @@
               <div class="card">
                 <h3>Getting Started</h3>
                 <p class="muted">Follow this quick flow to complete your first validated flight:</p>
+                <div class="onboarding-progress">
+                  <div class="onboarding-progress-label muted"><span id="onboardingProgressText">0/0 complete</span></div>
+                  <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                    <div class="progress-fill" id="onboardingProgressFill"></div>
+                  </div>
+                </div>
+                <div id="onboardingBadgeRow" class="onboarding-badges"></div>
                 <ul id="onboardingChecklist" class="onboarding-list"></ul>
+              </div>
+              <div class="card">
+                <h3>Recent Activity</h3>
+                <p class="muted">Your latest accepted jobs, tracking starts, and shop purchases.</p>
+                <ul id="recentActivityList" class="activity-list"></ul>
               </div>
               <div class="card">
                 <h3>Discourse / IFC Account Link</h3>
@@ -277,9 +346,17 @@
       </section>
     </main>
   </div>
+  <nav class="mobile-bottom-nav" aria-label="Primary">
+    <button class="nav-btn" data-page="overviewPage" onclick="showPage('overviewPage')">Overview</button>
+    <button class="nav-btn" data-page="jobsPage" onclick="showPage('jobsPage')">Jobs</button>
+    <button class="nav-btn" data-page="dispatchPage" onclick="showPage('dispatchPage')">Dispatch</button>
+    <button class="nav-btn" data-page="shopPage" onclick="showPage('shopPage')">Shop</button>
+    <button class="nav-btn" data-page="historyPage" onclick="showPage('historyPage')">Tracking</button>
+  </nav>
+  <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+  <script src="config.js" defer></script>
   <script type="module" src="app.js"></script>
 </body>
 </html>
