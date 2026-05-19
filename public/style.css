@@ -10,6 +10,14 @@
   --danger: #c53d3d;
   --warning: #b26a14;
   --shadow: 0 8px 28px rgba(10, 31, 68, 0.08);
+  --glass-bg-1: color-mix(in srgb, #ffffff 58%, transparent);
+  --glass-bg-2: color-mix(in srgb, #f3f7ff 36%, transparent);
+  --glass-border: color-mix(in srgb, #ffffff 44%, var(--border));
+  --glass-shadow: 0 22px 54px rgba(10, 31, 68, 0.18);
+  --glass-shadow-soft: 0 10px 28px rgba(10, 31, 68, 0.12);
+  --glass-highlight: color-mix(in srgb, #ffffff 62%, transparent);
+  --glass-refraction: color-mix(in srgb, #9cbcff 20%, transparent);
+  --glass-blur: 34px;
 }
 
 :root[data-theme='dark'] {
@@ -24,6 +32,14 @@
   --danger: #ff7f7f;
   --warning: #f0b76b;
   --shadow: 0 12px 30px rgba(0, 0, 0, 0.28);
+  --glass-bg-1: color-mix(in srgb, #24304a 52%, transparent);
+  --glass-bg-2: color-mix(in srgb, #1a2235 40%, transparent);
+  --glass-border: color-mix(in srgb, #ffffff 24%, var(--border));
+  --glass-shadow: 0 26px 58px rgba(0, 0, 0, 0.45);
+  --glass-shadow-soft: 0 12px 30px rgba(0, 0, 0, 0.35);
+  --glass-highlight: color-mix(in srgb, #dce7ff 40%, transparent);
+  --glass-refraction: color-mix(in srgb, #7aa3ff 22%, transparent);
+  --glass-blur: 30px;
 }
 
 * {
@@ -41,6 +57,7 @@ body.glass-mode {
   background:
     radial-gradient(1200px 520px at 10% -20%, color-mix(in srgb, var(--accent) 24%, transparent), transparent 60%),
     radial-gradient(900px 500px at 90% 0%, color-mix(in srgb, #ffffff 32%, transparent), transparent 62%),
+    radial-gradient(700px 420px at 50% 110%, color-mix(in srgb, var(--glass-refraction) 50%, transparent), transparent 68%),
     var(--bg);
 }
 
@@ -87,50 +104,138 @@ main {
 
 body.glass-mode .card,
 body.glass-mode .topbar,
+body.glass-mode header,
 body.glass-mode .stat-box,
 body.glass-mode .list-item,
 body.glass-mode .history-list li,
+body.glass-mode .sidebar,
 body.glass-mode pre {
   position: relative;
   background: linear-gradient(
-    150deg,
-    color-mix(in srgb, var(--surface) 60%, transparent),
-    color-mix(in srgb, var(--surface-2) 52%, transparent)
+    155deg,
+    var(--glass-bg-1),
+    var(--glass-bg-2) 56%,
+    color-mix(in srgb, var(--surface-2) 62%, transparent)
   );
-  border: 1px solid color-mix(in srgb, #ffffff 34%, var(--border));
+  border: 1px solid var(--glass-border);
   box-shadow:
-    0 18px 44px color-mix(in srgb, #000000 14%, transparent),
-    inset 0 1px 0 color-mix(in srgb, #ffffff 40%, transparent),
+    var(--glass-shadow),
+    var(--glass-shadow-soft),
+    inset 0 1px 0 var(--glass-highlight),
     inset 0 -1px 0 color-mix(in srgb, #000000 12%, transparent);
-  backdrop-filter: blur(26px) saturate(1.3);
-  -webkit-backdrop-filter: blur(26px) saturate(1.3);
+  backdrop-filter: blur(var(--glass-blur)) saturate(1.45) contrast(1.05);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(1.45) contrast(1.05);
+  overflow: hidden;
 }
 
 body.glass-mode .card::before,
 body.glass-mode .topbar::before,
+body.glass-mode header::before,
 body.glass-mode .stat-box::before,
-body.glass-mode .list-item::before {
+body.glass-mode .list-item::before,
+body.glass-mode .sidebar::before {
   content: '';
   position: absolute;
   inset: 1px;
   pointer-events: none;
   border-radius: inherit;
   background: linear-gradient(
-    145deg,
-    color-mix(in srgb, #ffffff 22%, transparent),
-    color-mix(in srgb, #ffffff 6%, transparent) 38%,
-    color-mix(in srgb, #000000 9%, transparent)
+    142deg,
+    color-mix(in srgb, #ffffff 35%, transparent),
+    color-mix(in srgb, #ffffff 12%, transparent) 34%,
+    color-mix(in srgb, #8ea3cf 12%, transparent) 62%,
+    color-mix(in srgb, #000000 10%, transparent)
   );
-  opacity: 0.9;
+  opacity: 0.95;
+}
+
+body.glass-mode .card::after,
+body.glass-mode .topbar::after,
+body.glass-mode header::after,
+body.glass-mode .stat-box::after,
+body.glass-mode .list-item::after,
+body.glass-mode .sidebar::after {
+  content: '';
+  position: absolute;
+  inset: -40% -65%;
+  pointer-events: none;
+  border-radius: inherit;
+  background:
+    radial-gradient(42% 34% at 18% 16%, color-mix(in srgb, #ffffff 32%, transparent), transparent 70%),
+    linear-gradient(115deg, transparent 22%, color-mix(in srgb, var(--glass-highlight) 45%, transparent) 48%, transparent 72%);
+  opacity: 0.34;
+  transform: translate3d(-16%, 0, 0) rotate(6deg);
+  transition: transform 0.85s ease, opacity 0.45s ease;
 }
 
 body.glass-mode input,
 body.glass-mode select,
-body.glass-mode .nav-btn {
-  background: color-mix(in srgb, var(--surface-2) 56%, transparent);
-  border: 1px solid color-mix(in srgb, #ffffff 28%, var(--border));
-  backdrop-filter: blur(18px) saturate(1.2);
-  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+body.glass-mode .nav-btn,
+body.glass-mode .link-btn {
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--surface-2) 66%, transparent),
+    color-mix(in srgb, var(--glass-refraction) 18%, var(--surface-2))
+  );
+  border: 1px solid color-mix(in srgb, #ffffff 32%, var(--border));
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #ffffff 38%, transparent),
+    0 8px 18px color-mix(in srgb, #000000 12%, transparent);
+  backdrop-filter: blur(20px) saturate(1.3);
+  -webkit-backdrop-filter: blur(20px) saturate(1.3);
+}
+
+body.glass-mode .card:hover::after,
+body.glass-mode .topbar:hover::after,
+body.glass-mode header:hover::after,
+body.glass-mode .stat-box:hover::after,
+body.glass-mode .list-item:hover::after,
+body.glass-mode .sidebar:hover::after,
+body.glass-mode .nav-btn:hover::after,
+body.glass-mode .link-btn:hover::after {
+  transform: translate3d(18%, 0, 0) rotate(6deg);
+  opacity: 0.48;
+}
+
+body.glass-mode .nav-btn,
+body.glass-mode .link-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+body.glass-mode .nav-btn::after,
+body.glass-mode .link-btn::after {
+  content: '';
+  position: absolute;
+  top: -220%;
+  left: -55%;
+  width: 70%;
+  height: 520%;
+  pointer-events: none;
+  background: linear-gradient(
+    110deg,
+    transparent 15%,
+    color-mix(in srgb, #ffffff 70%, transparent) 50%,
+    transparent 85%
+  );
+  opacity: 0;
+  transform: rotate(22deg);
+  transition: opacity 0.2s ease;
+}
+
+body.glass-mode .nav-btn:hover::after,
+body.glass-mode .link-btn:hover::after {
+  opacity: 0.72;
+  animation: glassSheenSweep 1.15s ease-out 1;
+}
+
+@keyframes glassSheenSweep {
+  from {
+    transform: translateX(-120%) rotate(22deg);
+  }
+  to {
+    transform: translateX(260%) rotate(22deg);
+  }
 }
 
 .auth-card {
@@ -292,6 +397,9 @@ button.danger {
 .nav-btn.active {
   border-color: var(--accent);
   color: var(--accent);
+  box-shadow:
+    0 10px 22px color-mix(in srgb, var(--accent) 20%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #ffffff 44%, transparent);
 }
 
 .sidebar-settings label {
@@ -430,6 +538,25 @@ pre {
   color: var(--muted);
 }
 
+.field-error {
+  min-height: 18px;
+  margin-top: -2px;
+  margin-bottom: 8px;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  color: transparent;
+}
+
+.field-error-visible {
+  color: var(--danger);
+}
+
+input[aria-invalid='true'],
+select[aria-invalid='true'] {
+  border-color: var(--danger);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger) 18%, transparent);
+}
+
 .onboarding-list {
   margin: 8px 0 0;
   padding-left: 18px;
@@ -462,6 +589,38 @@ pre {
 
   .nav-btn {
     min-width: 130px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce), (update: slow), (hover: none) and (pointer: coarse) {
+  body.glass-mode .card::after,
+  body.glass-mode .topbar::after,
+  body.glass-mode header::after,
+  body.glass-mode .stat-box::after,
+  body.glass-mode .list-item::after,
+  body.glass-mode .sidebar::after,
+  body.glass-mode .nav-btn::after,
+  body.glass-mode .link-btn::after {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+    opacity: 0.2 !important;
+  }
+
+  body.glass-mode .card,
+  body.glass-mode .topbar,
+  body.glass-mode header,
+  body.glass-mode .stat-box,
+  body.glass-mode .list-item,
+  body.glass-mode .history-list li,
+  body.glass-mode .sidebar,
+  body.glass-mode pre,
+  body.glass-mode input,
+  body.glass-mode select,
+  body.glass-mode .nav-btn,
+  body.glass-mode .link-btn {
+    backdrop-filter: blur(16px) saturate(1.1);
+    -webkit-backdrop-filter: blur(16px) saturate(1.1);
   }
 }
 
