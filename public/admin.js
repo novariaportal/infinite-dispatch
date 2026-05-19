@@ -3,6 +3,7 @@ const supabasePublishableKey = window.SUPABASE_PUBLISHABLE_KEY;
 const supabaseClient = window.supabase.createClient(supabaseUrl, supabasePublishableKey);
 
 const ADMIN_PASSWORD = 'ifdispatchadmin';
+const ADMIN_MODE_KEY = 'infinite_dispatch_admin_password_mode';
 const LICENSE_OPTIONS = ['CPL', 'MPL', 'ATPL'];
 const VALID_LICENSE_SET = new Set(LICENSE_OPTIONS);
 const ICAO_REGEX = /^[A-Z]{4}$/;
@@ -392,6 +393,11 @@ async function unlockAdmin() {
   document.getElementById('adminGate').style.display = 'none';
   document.getElementById('adminPanel').style.display = 'block';
   document.getElementById('adminStatus').innerText = 'Admin unlocked, showing users.';
+  try {
+    localStorage.setItem(ADMIN_MODE_KEY, '1');
+  } catch {
+    // Ignore storage failures in restricted browser contexts.
+  }
   await loadProfiles();
 }
 

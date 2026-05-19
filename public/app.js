@@ -10,6 +10,9 @@ const supabaseClient = window.supabase.createClient(supabaseUrl, supabasePublish
 const THEME_KEY = 'infinite_dispatch_theme';
 const GLASS_KEY = 'infinite_dispatch_glass';
 const LIVERY_CACHE_KEY = 'infinite_dispatch_livery_cache_v2';
+const ADMIN_MODE_KEY = 'infinite_dispatch_admin_password_mode';
+const HIDDEN_DIAGNOSTICS_HASH = 'diag-7f3a9c';
+const DIAGNOSTICS_ACCESS_DENIED_MESSAGE = 'Diagnostics access denied: requires signed-in session or admin password mode.';
 
 const LIVERY_API_KEY = 'tyy8znhl0u5kbbb2vuvdhfetmsil041u';
 const INVALID_LIVERY_PATTERN = /generic|special|factory|house|prototype|test|demo|demonstrator|delivery/i;
@@ -66,6 +69,18 @@ let lastAirlabsHealth = {
   ok: false,
   detail: 'No AirLabs request attempted yet.'
 };
+let lastIfcProxyHealth = {
+  code: 'IFC_PROXY_NOT_CHECKED',
+  ok: false,
+  detail: 'No IFC profile proxy request attempted yet.'
+};
+let lastLiveryApiHealth = {
+  code: 'LIVERY_API_NOT_CHECKED',
+  ok: false,
+  detail: 'No livery API request attempted yet.'
+};
+let previousDispatchRouteSource = null;
+let lastJobGenerationSeed = null;
 let lastJobMarketFailure = null;
 let hasTrackingHistory = false;
 
@@ -646,6 +661,7 @@ async function fetchAirlabsRoutes(params = {}) {
         ok: false,
         detail: `Edge function returned HTTP ${res.status}.`
       };
+      renderDiagnosticsPage();
       return { data: [], request: { has_more: false } };
     }
     const payload = await res.json();
@@ -654,6 +670,7 @@ async function fetchAirlabsRoutes(params = {}) {
       ok: true,
       detail: 'AirLabs edge route query succeeded.'
     };
+    renderDiagnosticsPage();
     return payload || { data: [], request: { has_more: false } };
   } catch (error) {
     lastAirlabsHealth = {
@@ -661,6 +678,7 @@ async function fetchAirlabsRoutes(params = {}) {
       ok: false,
       detail: 'Network request to AirLabs edge function failed.'
     };
+    renderDiagnosticsPage();
     return { data: [], request: { has_more: false } };
   }
 }
@@ -828,6 +846,91 @@ function getHashParams() {
   return obj;
 }
 
+function getNormalizedHashValue() {
+  return String(window.location.hash || '').trim().replace(/^#/, '').toLowerCase();
+}
+
+function isAdminPasswordModeEnabled() {
+  try {
+    return localStorage.getItem(ADMIN_MODE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function hasActiveSession() {
+  return Boolean(currentUser);
+}
+
+function isDiagnosticsAccessAllowed() {
+  return hasActiveSession() || isAdminPasswordModeEnabled();
+}
+
+function toHealthLabel(health) {
+  if (!health) return 'Not checked';
+  const status = health.ok ? 'OK' : 'Degraded';
+  return `${status} (${health.code || 'UNKNOWN'})`;
+}
+
+function renderDiagnosticsPage(force = false) {
+  const diagnosticsPage = document.getElementById('diagnosticsPage');
+  if (!diagnosticsPage) return;
+  if (!force && !diagnosticsPage.classList.contains('active')) return;
+
+  const profileDump = document.getElementById('diagProfileDump');
+  const seedDump = document.getElementById('diagJobSeedDump');
+  const healthDump = document.getElementById('diagHealthDump');
+  const catalogSizeEl = document.getElementById('diagCatalogSize');
+  const liveryCacheStatusEl = document.getElementById('diagLiveryCacheStatus');
+  const routeSourceEl = document.getElementById('diagRouteSource');
+  const airlabsHealthEl = document.getElementById('diagAirlabsHealth');
+  const ifcProxyHealthEl = document.getElementById('diagIfcProxyHealth');
+  const liveryApiHealthEl = document.getElementById('diagLiveryApiHealth');
+
+  if (
+    !profileDump
+    || !seedDump
+    || !healthDump
+    || !catalogSizeEl
+    || !liveryCacheStatusEl
+    || !routeSourceEl
+    || !airlabsHealthEl
+    || !ifcProxyHealthEl
+    || !liveryApiHealthEl
+  ) {
+    return;
+  }
+
+  const cacheKeys = Object.keys(liveryCache || {});
+  catalogSizeEl.textContent = String(passengerAircraftCatalog.length || 0);
+  liveryCacheStatusEl.textContent = cacheKeys.length
+    ? `${cacheKeys.length} aircraft cached`
+    : 'Empty';
+  routeSourceEl.textContent = latestGeneratedDispatch?.routeSource || previousDispatchRouteSource || 'Not generated';
+  airlabsHealthEl.textContent = toHealthLabel(lastAirlabsHealth);
+  ifcProxyHealthEl.textContent = toHealthLabel(lastIfcProxyHealth);
+  liveryApiHealthEl.textContent = toHealthLabel(lastLiveryApiHealth);
+
+  profileDump.textContent = JSON.stringify(currentProfile || {}, null, 2);
+  seedDump.textContent = JSON.stringify(lastJobGenerationSeed || { detail: 'No seed leg selected yet.' }, null, 2);
+  healthDump.textContent = JSON.stringify({
+    airlabs: lastAirlabsHealth,
+    ifcProxy: lastIfcProxyHealth,
+    liveryApi: lastLiveryApiHealth
+  }, null, 2);
+}
+
+function tryOpenDiagnosticsFromHash() {
+  if (getNormalizedHashValue() !== HIDDEN_DIAGNOSTICS_HASH) return false;
+  if (!isDiagnosticsAccessAllowed()) {
+    console.warn(DIAGNOSTICS_ACCESS_DENIED_MESSAGE);
+    return false;
+  }
+  showSection('dashboardSection');
+  showPage('diagnosticsPage');
+  return true;
+}
+
 function showSection(sectionId) {
   const ids = ['landingSection', 'authSection', 'resetSection', 'recoverySection', 'dashboardSection'];
   ids.forEach((id) => {
@@ -838,11 +941,19 @@ function showSection(sectionId) {
 }
 
 function showPage(pageId) {
+  let effectivePage = pageId;
+  if (pageId === 'diagnosticsPage' && !isDiagnosticsAccessAllowed()) {
+    console.warn(DIAGNOSTICS_ACCESS_DENIED_MESSAGE);
+    effectivePage = 'overviewPage';
+  }
+
   const pages = document.querySelectorAll('.page');
-  pages.forEach((page) => page.classList.toggle('active', page.id === pageId));
+  pages.forEach((page) => page.classList.toggle('active', page.id === effectivePage));
 
   const navBtns = document.querySelectorAll('.nav-btn');
-  navBtns.forEach((btn) => btn.classList.toggle('active', btn.dataset.page === pageId));
+  navBtns.forEach((btn) => btn.classList.toggle('active', btn.dataset.page === effectivePage));
+
+  if (effectivePage === 'diagnosticsPage') renderDiagnosticsPage(true);
 }
 
 function applyAppearanceFromStorage() {
@@ -1139,6 +1250,12 @@ async function checkDiscourseVerificationFlow() {
   try {
     const res = await fetch(endpoint);
     if (!res.ok) {
+      lastIfcProxyHealth = {
+        code: `IFC_PROXY_HTTP_${res.status}`,
+        ok: false,
+        detail: `IFC profile proxy returned HTTP ${res.status}.`
+      };
+      renderDiagnosticsPage();
       await persistIdentityLinkUpdates({
         ifc_link_status: 'failed',
         ifc_link_last_checked_at: nowIso,
@@ -1149,6 +1266,12 @@ async function checkDiscourseVerificationFlow() {
     }
 
     const payload = await res.json();
+    lastIfcProxyHealth = {
+      code: 'IFC_PROXY_OK',
+      ok: true,
+      detail: 'IFC profile proxy fetch succeeded.'
+    };
+    renderDiagnosticsPage();
     const bioText = readIfcBioText(payload);
     const isVerified = bioText.includes(verificationCode);
     const updates = isVerified
@@ -1174,6 +1297,12 @@ async function checkDiscourseVerificationFlow() {
       ? 'Account link verified successfully.'
       : 'Verification code not found yet. Ensure the exact code is in your IFC profile About Me and retry.');
   } catch (err) {
+    lastIfcProxyHealth = {
+      code: 'IFC_PROXY_FETCH_FAILED',
+      ok: false,
+      detail: err?.message || 'IFC profile proxy request failed.'
+    };
+    renderDiagnosticsPage();
     await persistIdentityLinkUpdates({
       ifc_link_status: 'failed',
       ifc_link_last_checked_at: nowIso,
@@ -1314,6 +1443,7 @@ function renderDashboard(profile) {
   renderDiscourseLinkStatus(normalizedProfile);
   renderOnboardingCard(normalizedProfile);
   renderJobRefreshStatus();
+  renderDiagnosticsPage();
 }
 
 function restoreLiveryCache() {
@@ -1336,6 +1466,7 @@ function restoreLiveryCache() {
 
     liveryCache = sanitizedCache;
     persistLiveryCache();
+    renderDiagnosticsPage();
   } catch {
     liveryCache = {};
   }
@@ -1343,6 +1474,7 @@ function restoreLiveryCache() {
 
 function persistLiveryCache() {
   localStorage.setItem(LIVERY_CACHE_KEY, JSON.stringify(liveryCache));
+  renderDiagnosticsPage();
 }
 
 function getAircraftSizeClass(aircraftName = '') {
@@ -1399,6 +1531,8 @@ async function loadAircraftCatalog() {
     .filter((m) => m?.id && m?.name && isPassengerAircraft(m.name))
     .map((m) => ({ id: m.id, name: m.name, displayName: getAircraftDisplayName(m.name) }));
 
+  renderDiagnosticsPage();
+
   return passengerAircraftCatalog;
 }
 
@@ -1418,11 +1552,26 @@ async function fetchAircraftOperators(aircraftId) {
     );
 
     liveryCache[aircraftId] = canonicalOperators;
+    lastLiveryApiHealth = {
+      code: 'LIVERY_CACHE_RETRIEVED',
+      ok: true,
+      detail: `Loaded livery operators for ${aircraftId} from cache.`
+    };
+    renderDiagnosticsPage();
     return canonicalOperators;
   }
 
   try {
     const res = await fetch(`https://api.infiniteflight.com/public/v2/aircraft/${aircraftId}/liveries?apikey=${LIVERY_API_KEY}`);
+    if (!res.ok) {
+      lastLiveryApiHealth = {
+        code: `LIVERY_API_HTTP_${res.status}`,
+        ok: false,
+        detail: `Livery API returned HTTP ${res.status}.`
+      };
+      renderDiagnosticsPage();
+      return liveryCache[aircraftId] || [];
+    }
     const payload = await res.json();
     const liveries = Array.isArray(payload?.result) ? payload.result : [];
 
@@ -1434,8 +1583,20 @@ async function fetchAircraftOperators(aircraftId) {
 
     liveryCache[aircraftId] = operators;
     persistLiveryCache();
+    lastLiveryApiHealth = {
+      code: 'LIVERY_API_OK',
+      ok: true,
+      detail: `Fetched ${operators.length} operator mappings from livery API.`
+    };
+    renderDiagnosticsPage();
     return operators;
   } catch (err) {
+    lastLiveryApiHealth = {
+      code: 'LIVERY_API_FETCH_FAILED',
+      ok: false,
+      detail: err?.message || `Livery API request failed for ${aircraftId}.`
+    };
+    renderDiagnosticsPage();
     console.warn('Failed to load liveries for aircraft:', aircraftId, err);
     return liveryCache[aircraftId] || [];
   }
@@ -1639,6 +1800,15 @@ async function generatePassengerJob(index, failureCounter = null) {
     if (airlabsLegs.length) {
       seedLeg = pickRandom(airlabsLegs);
       distanceNm = haversineNm(seedLeg.origin, seedLeg.destination);
+      lastJobGenerationSeed = {
+        source: 'airlabs',
+        generatedAt: new Date().toISOString(),
+        base,
+        airline,
+        aircraft: aircraft.displayName || aircraft.name,
+        seedLeg
+      };
+      renderDiagnosticsPage();
     } else {
       const previewLegs = buildCuratedRoute(base, airline, aircraft.displayName || aircraft.name);
       if (previewLegs.length < 2 || previewLegs.length > 3) {
@@ -1650,6 +1820,15 @@ async function generatePassengerJob(index, failureCounter = null) {
         continue;
       }
       distanceNm = randomDistanceForAircraft(aircraft.name);
+      lastJobGenerationSeed = {
+        source: 'curated-fallback',
+        generatedAt: new Date().toISOString(),
+        base,
+        airline,
+        aircraft: aircraft.displayName || aircraft.name,
+        seedLeg: previewLegs[0] || null
+      };
+      renderDiagnosticsPage();
     }
 
     const pay = calculateJobPay(distanceNm, aircraft.name);
@@ -1792,6 +1971,7 @@ function acceptJob(jobId) {
 
   acceptedJob = job;
   latestGeneratedDispatch = null;
+  previousDispatchRouteSource = null;
 
   document.getElementById('acceptedJobDetails').innerHTML = `
     <strong>${job.airline}</strong><br>
@@ -1953,6 +2133,7 @@ function renderGeneratedDispatch(routePlan) {
 
   updateStartTrackingButtonVisibility();
   if (currentProfile) renderOnboardingCard(currentProfile);
+  renderDiagnosticsPage();
 }
 
 async function generateDispatch() {
@@ -2007,6 +2188,7 @@ async function generateDispatch() {
     routeSource,
     legs: routeLegs
   };
+  previousDispatchRouteSource = routeSource;
 
   renderGeneratedDispatch(latestGeneratedDispatch);
 }
@@ -2415,17 +2597,25 @@ function renderOnboardingCard(profile) {
 }
 
 async function initializeDashboard() {
-  if (!currentProfile) return;
+  const canAccessDashboard = Boolean(currentProfile) || isAdminPasswordModeEnabled();
+  if (!canAccessDashboard) return;
 
   showSection('dashboardSection');
   showPage('overviewPage');
-  renderDashboard(currentProfile);
-  renderJobRefreshStatus();
+  if (currentProfile) {
+    renderDashboard(currentProfile);
+    renderJobRefreshStatus();
+  } else {
+    renderDiagnosticsPage();
+  }
   applyAppearanceFromStorage();
   restoreLiveryCache();
   await loadAircraftCatalog();
-  await Promise.all([loadTrackingHistory(), loadJobMarket()]);
-  renderPilotShop();
+  if (currentProfile) {
+    await Promise.all([loadTrackingHistory(), loadJobMarket()]);
+    renderPilotShop();
+  }
+  tryOpenDiagnosticsFromHash();
 }
 
 async function tryAutoLogin() {
@@ -2453,6 +2643,10 @@ window.addEventListener('load', async () => {
   } catch (e) {
     console.warn('Auto-login skipped:', e?.message || e);
   }
+
+  if (isAdminPasswordModeEnabled() && getNormalizedHashValue() === HIDDEN_DIAGNOSTICS_HASH) {
+    await initializeDashboard();
+  }
 });
 
 window.onThemeChange = onThemeChange;
@@ -2477,3 +2671,4 @@ window.buyLicense = buyLicense;
 window.buyTypeRating = buyTypeRating;
 window.startDiscourseVerificationFlow = startDiscourseVerificationFlow;
 window.checkDiscourseVerificationFlow = checkDiscourseVerificationFlow;
+window.renderDiagnosticsPage = renderDiagnosticsPage;
