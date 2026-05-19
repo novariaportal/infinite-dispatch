@@ -59,6 +59,7 @@ create table if not exists public.profiles (
   job_refreshes_used integer not null default 0,
   job_refresh_window_started_at timestamp with time zone,
   job_refresh_admin_override boolean not null default false,
+  simbrief_tracking_admin_enabled boolean not null default false,
   discourse_username text,
   ifc_link_status text not null default 'unlinked',
   ifc_link_code text,
@@ -148,6 +149,7 @@ alter table public.profiles add column if not exists ifc_link_code text;
 alter table public.profiles add column if not exists ifc_link_verified_at timestamp with time zone;
 alter table public.profiles add column if not exists ifc_link_last_checked_at timestamp with time zone;
 alter table public.profiles add column if not exists ifc_link_last_error text;
+alter table public.profiles add column if not exists simbrief_tracking_admin_enabled boolean not null default false;
 
 alter table public.flight_tracking add column if not exists identity_link_status text;
 alter table public.flight_tracking add column if not exists identity_link_username text;
