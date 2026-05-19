@@ -4,6 +4,9 @@ const supabaseClient = window.supabase.createClient(supabaseUrl, supabasePublish
 
 const ADMIN_PASSWORD = 'ifdispatchadmin';
 const LICENSE_OPTIONS = ['CPL', 'MPL', 'ATPL'];
+const VALID_LICENSE_SET = new Set(LICENSE_OPTIONS);
+const ICAO_REGEX = /^[A-Z]{4}$/;
+const TYPE_RATING_TOKEN_REGEX = /^[A-Z0-9/-]{2,12}$/;
 const DEFAULT_EMPLOYER_OPTIONS = [
   'American Airlines',
   'ANA',
@@ -33,7 +36,6 @@ const SUPPORTED_BASE_AIRPORTS = [
   'NZAA', 'EGLL', 'EGKK', 'LFPG', 'EHAM', 'OMDB', 'OTHH', 'OJED', 'OERK', 'OMAA', 'LTBA', 'EDDF', 'LFPO',
   'RKSI', 'RJBB', 'KJFK', 'KLAX', 'KSFO', 'KSEA', 'KMIA', 'KORD'
 ];
-const SUPPORTED_BASE_AIRPORT_SET = new Set(SUPPORTED_BASE_AIRPORTS);
 const BASE_AIRPORT_DATALIST_ID = 'supportedBaseAirportsList';
 
 function formatRatings(raw) {
@@ -41,6 +43,155 @@ function formatRatings(raw) {
     .split(',')
     .map((x) => x.trim())
     .filter(Boolean);
+}
+
+function sanitizeTypeRatings(raw) {
+  const invalidTokens = [];
+  const normalized = [];
+  formatRatings(raw).forEach((token) => {
+    const sanitized = token
+      .toUpperCase()
+      .replace(/\s+/g, '')
+      .replace(/[^A-Z0-9/-]/g, '');
+    if (!sanitized || !TYPE_RATING_TOKEN_REGEX.test(sanitized)) {
+      invalidTokens.push(token);
+      return;
+    }
+    normalized.push(sanitized);
+  });
+  return {
+    ratings: [...new Set(normalized)],
+    invalidTokens
+  };
+}
+
+function getFieldErrorElement(profileId, fieldName) {
+  return document.getElementById(`error_${fieldName}_${profileId}`);
+}
+
+function getFieldInputElement(profileId, fieldName) {
+  const map = {
+    hours: 'hours',
+    slots: 'slots',
+    license: 'license',
+    ratings: 'ratings',
+    balance: 'balance',
+    base: 'base'
+  };
+  const prefix = map[fieldName];
+  if (!prefix) return null;
+  return document.getElementById(`${prefix}_${profileId}`);
+}
+
+function clearFieldError(profileId, fieldName) {
+  const errorEl = getFieldErrorElement(profileId, fieldName);
+  const inputEl = getFieldInputElement(profileId, fieldName);
+  if (!errorEl) return;
+  errorEl.textContent = '';
+  errorEl.classList.remove('field-error-visible');
+  if (inputEl) inputEl.setAttribute('aria-invalid', 'false');
+}
+
+function setFieldError(profileId, fieldName, message) {
+  const errorEl = getFieldErrorElement(profileId, fieldName);
+  const inputEl = getFieldInputElement(profileId, fieldName);
+  if (!errorEl) return;
+  errorEl.textContent = message;
+  errorEl.classList.add('field-error-visible');
+  if (inputEl) inputEl.setAttribute('aria-invalid', 'true');
+}
+
+function clearValidationErrors(profileId) {
+  ['hours', 'slots', 'license', 'ratings', 'balance', 'base'].forEach((field) => clearFieldError(profileId, field));
+}
+
+function bindValidationClearHandlers(profileId) {
+  const fieldMap = {
+    hours: `hours_${profileId}`,
+    slots: `slots_${profileId}`,
+    license: `license_${profileId}`,
+    ratings: `ratings_${profileId}`,
+    balance: `balance_${profileId}`,
+    base: `base_${profileId}`
+  };
+  Object.entries(fieldMap).forEach(([fieldName, inputId]) => {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const eventName = input.tagName === 'SELECT' ? 'change' : 'input';
+    input.addEventListener(eventName, () => clearFieldError(profileId, fieldName));
+  });
+}
+
+function parsePositiveInteger(rawValue) {
+  const raw = String(rawValue ?? '').trim();
+  if (!raw) return null;
+  const parsed = Number(raw);
+  if (Number.isNaN(parsed)) return null;
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
+function buildValidatedProfileUpdates(profileId) {
+  clearValidationErrors(profileId);
+
+  const hoursInput = document.getElementById(`hours_${profileId}`);
+  const slotsInput = document.getElementById(`slots_${profileId}`);
+  const licenseInput = document.getElementById(`license_${profileId}`);
+  const ratingsInput = document.getElementById(`ratings_${profileId}`);
+  const balanceInput = document.getElementById(`balance_${profileId}`);
+  const baseInput = document.getElementById(`base_${profileId}`);
+
+  const hours = parsePositiveInteger(hoursInput?.value);
+  const jobSlots = parsePositiveInteger(slotsInput?.value);
+  const balance = parsePositiveInteger(balanceInput?.value);
+  const license = (licenseInput?.value || '').trim();
+  const baseAirport = (baseInput?.value || '').trim().toUpperCase();
+  const { ratings, invalidTokens } = sanitizeTypeRatings(ratingsInput?.value || '');
+
+  let hasErrors = false;
+
+  if (hours === null) {
+    setFieldError(profileId, 'hours', 'Hours must be a positive integer.');
+    hasErrors = true;
+  }
+  if (jobSlots === null) {
+    setFieldError(profileId, 'slots', 'Job slots must be a positive integer.');
+    hasErrors = true;
+  }
+  if (balance === null) {
+    setFieldError(profileId, 'balance', 'Balance must be a positive integer.');
+    hasErrors = true;
+  }
+  if (!VALID_LICENSE_SET.has(license)) {
+    setFieldError(profileId, 'license', `License must be one of: ${LICENSE_OPTIONS.join(', ')}.`);
+    hasErrors = true;
+  }
+  // Empty base airport values are intentionally allowed for legacy/optional profile data.
+  if (baseAirport && !ICAO_REGEX.test(baseAirport)) {
+    setFieldError(profileId, 'base', 'Base airport must be a valid ICAO code (4 letters, e.g. KJFK).');
+    hasErrors = true;
+  }
+  if (invalidTokens.length > 0) {
+    setFieldError(
+      profileId,
+      'ratings',
+      `Invalid ratings: ${invalidTokens.join(', ')}. Use only letters, numbers, "/" or "-".`
+    );
+    hasErrors = true;
+  }
+
+  if (hasErrors) return null;
+
+  if (ratingsInput) ratingsInput.value = ratings.join(', ');
+  if (baseInput) baseInput.value = baseAirport;
+
+  return {
+    hours,
+    job_slots: jobSlots,
+    license,
+    type_ratings: ratings,
+    balance,
+    base_airport: baseAirport
+  };
 }
 
 function escapeHtml(value) {
@@ -172,27 +323,33 @@ function profileCard(profile) {
   wrap.innerHTML = `
     <div class="list-row"><strong>${profileName}</strong><span>${profileId}</span></div>
     <label>Hours</label>
-    <input id="hours_${profile.id}" type="number" value="${profile.hours ?? 0}">
+    <input id="hours_${profile.id}" type="number" min="1" step="1" value="${profile.hours ?? 0}">
+    <div id="error_hours_${profile.id}" class="field-error" aria-live="polite"></div>
     <label>Jobs / Job Slots</label>
-    <input id="slots_${profile.id}" type="number" value="${profile.job_slots ?? 0}">
+    <input id="slots_${profile.id}" type="number" min="1" step="1" value="${profile.job_slots ?? 0}">
+    <div id="error_slots_${profile.id}" class="field-error" aria-live="polite"></div>
     <label>License(s)</label>
     <select id="license_${profile.id}">
       ${buildSelectOptions(licenseOptions, selectedLicense)}
     </select>
+    <div id="error_license_${profile.id}" class="field-error" aria-live="polite"></div>
     <label>Position</label>
     <input id="position_${profile.id}" type="text" value="${profile.position || ''}">
     <label>Pay Multiplier</label>
     <input id="multiplier_${profile.id}" type="number" step="0.1" value="${profile.pay_multiplier ?? 1}">
     <label>Type Ratings (comma separated)</label>
     <input id="ratings_${profile.id}" type="text" value="${(profile.type_ratings || []).join(', ')}">
+    <div id="error_ratings_${profile.id}" class="field-error" aria-live="polite"></div>
     <label>Money / Balance</label>
-    <input id="balance_${profile.id}" type="number" value="${profile.balance ?? 0}">
+    <input id="balance_${profile.id}" type="number" min="1" step="1" value="${profile.balance ?? 0}">
+    <div id="error_balance_${profile.id}" class="field-error" aria-live="polite"></div>
     <label>Employer</label>
     <select id="employer_${profile.id}">
       ${buildSelectOptions(employerOptions, profile.employer || '')}
     </select>
-    <label>Base Airport (supported ICAO only)</label>
+    <label>Base Airport (ICAO format)</label>
     <input id="base_${profile.id}" type="text" list="${BASE_AIRPORT_DATALIST_ID}" maxlength="4" value="${profile.base_airport || ''}">
+    <div id="error_base_${profile.id}" class="field-error" aria-live="polite"></div>
     <label>Job Refreshes Used (36h window)</label>
     <input id="refreshes_${profile.id}" type="number" min="0" value="${refreshesUsed}">
     <label>Job Refresh Window Start (ISO or blank)</label>
@@ -221,6 +378,7 @@ function profileCard(profile) {
     <input id="ifcLastError_${profile.id}" type="text" value="${escapeHtml(profile.ifc_link_last_error || '')}">
     <button onclick="saveProfile('${profile.id}')">Save Profile</button>
   `;
+  bindValidationClearHandlers(profile.id);
   return wrap;
 }
 
@@ -287,22 +445,14 @@ async function loadProfiles() {
 }
 
 async function saveProfile(profileId) {
-  const baseAirport = (document.getElementById(`base_${profileId}`).value || '').trim().toUpperCase();
-  if (baseAirport && !SUPPORTED_BASE_AIRPORT_SET.has(baseAirport)) {
-    alert(`Unsupported base airport ICAO "${baseAirport}". Use one of the supported airports in the suggestion list.`);
-    return;
-  }
+  const validatedProfileFields = buildValidatedProfileUpdates(profileId);
+  if (!validatedProfileFields) return;
 
   const updates = {
-    hours: Number(document.getElementById(`hours_${profileId}`).value || 0),
-    job_slots: Number(document.getElementById(`slots_${profileId}`).value || 0),
-    license: (document.getElementById(`license_${profileId}`).value || '').trim(),
+    ...validatedProfileFields,
     position: (document.getElementById(`position_${profileId}`).value || '').trim(),
     pay_multiplier: Number(document.getElementById(`multiplier_${profileId}`).value || 1),
-    type_ratings: formatRatings(document.getElementById(`ratings_${profileId}`).value),
-    balance: Number(document.getElementById(`balance_${profileId}`).value || 0),
     employer: (document.getElementById(`employer_${profileId}`).value || '').trim(),
-    base_airport: baseAirport,
     job_refreshes_used: Math.max(0, Number(document.getElementById(`refreshes_${profileId}`).value || 0)),
     job_refresh_window_started_at: (document.getElementById(`refreshWindow_${profileId}`).value || '').trim() || null,
     job_refresh_admin_override: Boolean(document.getElementById(`refreshOverride_${profileId}`).checked),
