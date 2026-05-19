@@ -1,5 +1,6 @@
 export {
   generateDispatch,
   fetchSimBrief,
-  dispatchFlight
+  dispatchFlight,
+  leaveAcceptedJob
 } from './core.js';
