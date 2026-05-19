@@ -867,7 +867,11 @@ function toHealthLabel(health) {
   return `${status} (${health.code || 'UNKNOWN'})`;
 }
 
-function renderDiagnosticsPage() {
+function renderDiagnosticsPage(force = false) {
+  const diagnosticsPage = document.getElementById('diagnosticsPage');
+  if (!diagnosticsPage) return;
+  if (!force && !diagnosticsPage.classList.contains('active')) return;
+
   const profileDump = document.getElementById('diagProfileDump');
   const seedDump = document.getElementById('diagJobSeedDump');
   const healthDump = document.getElementById('diagHealthDump');
@@ -914,7 +918,7 @@ function renderDiagnosticsPage() {
 function tryOpenDiagnosticsFromHash() {
   if (getNormalizedHashValue() !== HIDDEN_DIAGNOSTICS_HASH) return false;
   if (!isDiagnosticsAccessAllowed()) {
-    alert('Diagnostics access is restricted to signed-in users or admin password mode.');
+    console.warn('Diagnostics access denied: requires signed-in session or admin password mode.');
     return false;
   }
   showSection('dashboardSection');
@@ -934,7 +938,7 @@ function showSection(sectionId) {
 function showPage(pageId) {
   let effectivePage = pageId;
   if (pageId === 'diagnosticsPage' && !isDiagnosticsAccessAllowed()) {
-    alert('Diagnostics access is restricted to signed-in users or admin password mode.');
+    console.warn('Diagnostics access denied: requires signed-in session or admin password mode.');
     effectivePage = 'overviewPage';
   }
 
@@ -944,7 +948,7 @@ function showPage(pageId) {
   const navBtns = document.querySelectorAll('.nav-btn');
   navBtns.forEach((btn) => btn.classList.toggle('active', btn.dataset.page === effectivePage));
 
-  if (effectivePage === 'diagnosticsPage') renderDiagnosticsPage();
+  if (effectivePage === 'diagnosticsPage') renderDiagnosticsPage(true);
 }
 
 function applyAppearanceFromStorage() {

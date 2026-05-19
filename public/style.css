@@ -575,7 +575,7 @@ select[aria-invalid='true'] {
 
 .diagnostics-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  grid-template-columns: repeat(2, minmax(200px, 1fr));
   gap: 12px;
 }
 
@@ -603,6 +603,7 @@ select[aria-invalid='true'] {
     right: 0;
     bottom: 0;
     margin: 0;
+    padding: 10px 12px 10px;
     padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
     border-top: 1px solid var(--border);
     background: var(--surface);
@@ -610,6 +611,13 @@ select[aria-invalid='true'] {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 8px;
+    border-radius: 0;
+  }
+
+  body.glass-mode .sidebar-nav {
+    border-left: 0;
+    border-right: 0;
+    border-bottom: 0;
   }
 
   .nav-btn {
