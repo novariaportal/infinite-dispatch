@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const compression = require('compression');
 const path = require('path');
+const { randomInt } = require('crypto');
 
 const app = express();
 const LOCAL_DEMO_MODE = process.env.LOCAL_DEMO_MODE === '1';
@@ -59,8 +60,8 @@ app.post('/api/telemetry', (req, res) => {
 });
 
 if (LOCAL_DEMO_MODE) {
-  const users = {};
-  const activeFlights = {};
+  const users = new Map();
+  const activeFlights = new Map();
   const airlines = [
     { name: 'Delta Air Lines', fleet: ['Boeing 737-800', 'Airbus A350'] },
     { name: 'British Airways', fleet: ['Boeing 787-9', 'Airbus A380'] },
@@ -68,7 +69,6 @@ if (LOCAL_DEMO_MODE) {
     { name: 'Emirates', fleet: ['Boeing 777-300ER', 'Airbus A380'] }
   ];
 
-  const randomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
   const getJobSlotCount = (totalHours) => {
     if (totalHours < 150) return 2;
     if (totalHours < 350) return 4;
@@ -92,10 +92,10 @@ if (LOCAL_DEMO_MODE) {
         return res.status(400).json({ success: false, message: 'username, password, and ICAO baseAirport are required.' });
       }
 
-      const randomAirline = airlines[Math.floor(Math.random() * airlines.length)];
+      const randomAirline = airlines[randomInt(0, airlines.length - 1)];
       const totalHours = 0;
       const prog = getProgression(totalHours);
-      users[username] = {
+      users.set(username, {
         username,
         password,
         baseAirport: normalizedBaseAirport,
@@ -109,7 +109,7 @@ if (LOCAL_DEMO_MODE) {
         allowedFleet: randomAirline.fleet,
         typeRatings: ['Cessna 172', 'Cirrus SR22 GTS', 'TBM-930'],
         jobSlots: getJobSlotCount(totalHours)
-      };
+      });
       return res.json({ success: true, message: 'Demo account created.' });
     } catch (error) {
       logEvent('error', 'DEMO_VERIFY_FAILED', { message: error.message });
@@ -119,7 +119,7 @@ if (LOCAL_DEMO_MODE) {
 
   app.post('/api/login', (req, res) => {
     const { username, password } = req.body || {};
-    const user = users[username];
+    const user = users.get(username);
     if (!user || user.password !== password) {
       logEvent('warn', 'DEMO_LOGIN_REJECTED', { username: String(username || '') });
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
@@ -135,15 +135,17 @@ if (LOCAL_DEMO_MODE) {
 
   app.post('/api/reset-password', (req, res) => {
     const { username, newPassword } = req.body || {};
-    if (!users[username]) return res.status(404).json({ success: false, message: 'User not found.' });
-    users[username].password = newPassword;
+    if (!users.has(username)) return res.status(404).json({ success: false, message: 'User not found.' });
+    const user = users.get(username);
+    user.password = newPassword;
+    users.set(username, user);
     return res.json({ success: true, message: 'Password reset successfully.' });
   });
 
   app.post('/api/dispatch', (req, res) => {
     const { username, callsign } = req.body || {};
     if (!username || !callsign) return res.status(400).json({ success: false, message: 'username and callsign are required.' });
-    activeFlights[username] = { callsign, status: 'Departed', startTime: Date.now() };
+    activeFlights.set(username, { callsign, status: 'Departed', startTime: Date.now() });
     return res.json({ success: true, message: 'Demo flight dispatched.' });
   });
 } else {
