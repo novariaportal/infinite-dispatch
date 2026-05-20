@@ -33,6 +33,7 @@ const PROFILE_SELECT_ACCEPTANCE_FIELDS = 'job_acceptance_admin_override';
 const PROFILE_SELECT_IDENTITY_FIELDS = 'discourse_username, ifc_link_status, ifc_link_code, ifc_link_verified_at, ifc_link_last_checked_at, ifc_link_last_error';
 const PROFILE_SELECT_SIMBRIEF_TRACKING_FIELDS = 'simbrief_tracking_admin_enabled';
 const PROFILE_SELECT_ALL_FIELDS = `${PROFILE_SELECT_BASE_FIELDS}, ${PROFILE_SELECT_REFRESH_FIELDS}, ${PROFILE_SELECT_ACCEPTANCE_FIELDS}, ${PROFILE_SELECT_IDENTITY_FIELDS}, ${PROFILE_SELECT_SIMBRIEF_TRACKING_FIELDS}`;
+const MASS_APPLY_BATCH_SIZE = 10;
 const SUPPORTED_BASE_AIRPORTS = [
   'WSSS', 'WIII', 'VTBS', 'WMKK', 'RJTT', 'RJAA', 'VHHH', 'ZBAA', 'YSSY', 'YMML', 'YBBN', 'YPPH', 'YPAD',
   'NZAA', 'EGLL', 'EGKK', 'LFPG', 'EHAM', 'OMDB', 'OTHH', 'OJED', 'OERK', 'OMAA', 'LTBA', 'EDDF', 'LFPO',
@@ -636,7 +637,7 @@ function buildMassApplyUpdates() {
   if (position) updates.position = position;
   if (multiplierRaw) {
     const multiplier = Number(multiplierRaw);
-    if (!Number.isFinite(multiplier) || multiplier <= 0) return { error: 'Pay multiplier must be greater than 0.' };
+    if (!Number.isFinite(multiplier) || multiplier <= 0) return { error: 'Pay multiplier must be a positive number.' };
     updates.pay_multiplier = multiplier;
   }
   if (ratingsRaw) {
@@ -701,15 +702,23 @@ async function massApplyProfiles() {
   let successCount = 0;
   let failedCount = 0;
   let firstErrorMessage = '';
-  const batchSize = 10;
+  const failureMessages = new Set();
 
-  for (let i = 0; i < ids.length; i += batchSize) {
-    const chunk = ids.slice(i, i + batchSize);
-    const chunkResults = await Promise.all(chunk.map((profileId) => updateProfileRecord(profileId, updates)));
+  for (let i = 0; i < ids.length; i += MASS_APPLY_BATCH_SIZE) {
+    const chunk = ids.slice(i, i + MASS_APPLY_BATCH_SIZE);
+    const chunkResults = await Promise.all(chunk.map(async (profileId) => {
+      try {
+        return await updateProfileRecord(profileId, updates);
+      } catch (error) {
+        return { message: error?.message || 'Unexpected mass update failure' };
+      }
+    }));
     chunkResults.forEach((updateError) => {
       if (updateError) {
         failedCount += 1;
-        if (!firstErrorMessage) firstErrorMessage = updateError.message || 'Unknown update error';
+        const message = updateError.message || 'Unknown update error';
+        if (!firstErrorMessage) firstErrorMessage = message;
+        failureMessages.add(message);
       } else {
         successCount += 1;
       }
@@ -717,7 +726,8 @@ async function massApplyProfiles() {
   }
 
   if (failedCount > 0) {
-    alert(`Mass apply finished. Updated ${successCount}/${ids.length} users. Failed: ${failedCount}. First error: ${firstErrorMessage}`);
+    const errorSummary = [...failureMessages].slice(0, 3).join(' | ');
+    alert(`Mass apply finished. Updated ${successCount}/${ids.length} users. Failed: ${failedCount}. Errors: ${errorSummary || firstErrorMessage}`);
   } else {
     alert(`Mass apply finished. Updated ${successCount} users.`);
   }
