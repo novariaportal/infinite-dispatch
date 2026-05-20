@@ -33,12 +33,14 @@ const PROFILE_SELECT_ACCEPTANCE_FIELDS = 'job_acceptance_admin_override';
 const PROFILE_SELECT_IDENTITY_FIELDS = 'discourse_username, ifc_link_status, ifc_link_code, ifc_link_verified_at, ifc_link_last_checked_at, ifc_link_last_error';
 const PROFILE_SELECT_SIMBRIEF_TRACKING_FIELDS = 'simbrief_tracking_admin_enabled';
 const PROFILE_SELECT_ALL_FIELDS = `${PROFILE_SELECT_BASE_FIELDS}, ${PROFILE_SELECT_REFRESH_FIELDS}, ${PROFILE_SELECT_ACCEPTANCE_FIELDS}, ${PROFILE_SELECT_IDENTITY_FIELDS}, ${PROFILE_SELECT_SIMBRIEF_TRACKING_FIELDS}`;
+const MASS_APPLY_BATCH_SIZE = 10;
 const SUPPORTED_BASE_AIRPORTS = [
   'WSSS', 'WIII', 'VTBS', 'WMKK', 'RJTT', 'RJAA', 'VHHH', 'ZBAA', 'YSSY', 'YMML', 'YBBN', 'YPPH', 'YPAD',
   'NZAA', 'EGLL', 'EGKK', 'LFPG', 'EHAM', 'OMDB', 'OTHH', 'OJED', 'OERK', 'OMAA', 'LTBA', 'EDDF', 'LFPO',
   'RKSI', 'RJBB', 'KJFK', 'KLAX', 'KSFO', 'KSEA', 'KMIA', 'KORD'
 ];
 const BASE_AIRPORT_DATALIST_ID = 'supportedBaseAirportsList';
+let loadedProfiles = [];
 
 function formatRatings(raw) {
   return (raw || '')
@@ -405,6 +407,38 @@ function profileCard(profile) {
   return wrap;
 }
 
+function populateProfileSelect(profiles) {
+  const select = document.getElementById('profileSelect');
+  if (!select) return;
+  select.innerHTML = '<option value="">Select a user</option>';
+  profiles.forEach((profile) => {
+    const option = document.createElement('option');
+    option.value = profile.id;
+    option.textContent = profile.username ? `${profile.username} (${profile.id})` : profile.id;
+    select.appendChild(option);
+  });
+}
+
+function renderSelectedProfile(profileId) {
+  const container = document.getElementById('profilesContainer');
+  container.innerHTML = '';
+  if (!profileId) {
+    container.innerHTML = '<div class="list-item muted">Select a user from the dropdown to edit.</div>';
+    return;
+  }
+  const selected = loadedProfiles.find((profile) => profile.id === profileId);
+  if (!selected) {
+    container.innerHTML = '<div class="list-item muted">Selected user could not be found.</div>';
+    return;
+  }
+  container.appendChild(profileCard(selected));
+}
+
+function selectProfileFromDropdown() {
+  const profileId = document.getElementById('profileSelect')?.value || '';
+  renderSelectedProfile(profileId);
+}
+
 async function unlockAdmin() {
   const pw = document.getElementById('adminPassword').value;
   if (pw !== ADMIN_PASSWORD) {
@@ -425,8 +459,10 @@ async function unlockAdmin() {
 
 async function loadProfiles() {
   const container = document.getElementById('profilesContainer');
+  const profileSelect = document.getElementById('profileSelect');
   const filterId = document.getElementById('profileIdSearch').value.trim();
   container.innerHTML = '';
+  if (profileSelect) profileSelect.innerHTML = '<option value="">Loading users...</option>';
   let data = [];
 
   if (filterId) {
@@ -465,35 +501,20 @@ async function loadProfiles() {
   }
 
   if (!data || data.length === 0) {
+    loadedProfiles = [];
+    if (profileSelect) profileSelect.innerHTML = '<option value="">No users found</option>';
     container.innerHTML = '<div class="list-item muted">No profiles found.</div>';
     return;
   }
-
-  data.forEach((profile) => container.appendChild(profileCard(profile)));
+  loadedProfiles = data;
+  populateProfileSelect(data);
+  const firstId = data[0]?.id || '';
+  if (profileSelect && firstId) profileSelect.value = firstId;
+  renderSelectedProfile(firstId);
 }
 
-async function saveProfile(profileId) {
-  const validatedProfileFields = buildValidatedProfileUpdates(profileId);
-  if (!validatedProfileFields) return;
-
-  const updates = {
-    ...validatedProfileFields,
-    position: (document.getElementById(`position_${profileId}`).value || '').trim(),
-    pay_multiplier: Number(document.getElementById(`multiplier_${profileId}`).value || 1),
-    employer: (document.getElementById(`employer_${profileId}`).value || '').trim(),
-    job_refreshes_used: Math.max(0, Number(document.getElementById(`refreshes_${profileId}`).value || 0)),
-    job_refresh_window_started_at: (document.getElementById(`refreshWindow_${profileId}`).value || '').trim() || null,
-    job_refresh_admin_override: Boolean(document.getElementById(`refreshOverride_${profileId}`).checked),
-    job_acceptance_admin_override: Boolean(document.getElementById(`acceptanceOverride_${profileId}`).checked),
-    simbrief_tracking_admin_enabled: Boolean(document.getElementById(`simbriefTrackingOverride_${profileId}`).checked),
-    discourse_username: (document.getElementById(`discourseUsername_${profileId}`).value || '').trim(),
-    ifc_link_status: (document.getElementById(`ifcStatus_${profileId}`).value || 'unlinked').trim(),
-    ifc_link_code: (document.getElementById(`ifcCode_${profileId}`).value || '').trim() || null,
-    ifc_link_verified_at: (document.getElementById(`ifcVerifiedAt_${profileId}`).value || '').trim() || null,
-    ifc_link_last_checked_at: (document.getElementById(`ifcCheckedAt_${profileId}`).value || '').trim() || null,
-    ifc_link_last_error: (document.getElementById(`ifcLastError_${profileId}`).value || '').trim() || null
-  };
-
+async function updateProfileRecord(profileId, rawUpdates) {
+  const updates = { ...rawUpdates };
   let { error } = await supabaseClient
     .from('profiles')
     .update(updates)
@@ -538,6 +559,32 @@ async function saveProfile(profileId) {
       .eq('id', profileId));
   }
 
+  return error;
+}
+
+async function saveProfile(profileId) {
+  const validatedProfileFields = buildValidatedProfileUpdates(profileId);
+  if (!validatedProfileFields) return;
+
+  const updates = {
+    ...validatedProfileFields,
+    position: (document.getElementById(`position_${profileId}`).value || '').trim(),
+    pay_multiplier: Number(document.getElementById(`multiplier_${profileId}`).value || 1),
+    employer: (document.getElementById(`employer_${profileId}`).value || '').trim(),
+    job_refreshes_used: Math.max(0, Number(document.getElementById(`refreshes_${profileId}`).value || 0)),
+    job_refresh_window_started_at: (document.getElementById(`refreshWindow_${profileId}`).value || '').trim() || null,
+    job_refresh_admin_override: Boolean(document.getElementById(`refreshOverride_${profileId}`).checked),
+    job_acceptance_admin_override: Boolean(document.getElementById(`acceptanceOverride_${profileId}`).checked),
+    simbrief_tracking_admin_enabled: Boolean(document.getElementById(`simbriefTrackingOverride_${profileId}`).checked),
+    discourse_username: (document.getElementById(`discourseUsername_${profileId}`).value || '').trim(),
+    ifc_link_status: (document.getElementById(`ifcStatus_${profileId}`).value || 'unlinked').trim(),
+    ifc_link_code: (document.getElementById(`ifcCode_${profileId}`).value || '').trim() || null,
+    ifc_link_verified_at: (document.getElementById(`ifcVerifiedAt_${profileId}`).value || '').trim() || null,
+    ifc_link_last_checked_at: (document.getElementById(`ifcCheckedAt_${profileId}`).value || '').trim() || null,
+    ifc_link_last_error: (document.getElementById(`ifcLastError_${profileId}`).value || '').trim() || null
+  };
+
+  const error = await updateProfileRecord(profileId, updates);
   if (error) {
     alert(error.message);
     return;
@@ -546,8 +593,162 @@ async function saveProfile(profileId) {
   alert('Profile updated.');
 }
 
+function getMassApplyBooleanValue(inputId) {
+  const raw = (document.getElementById(inputId)?.value || '').trim();
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  return null;
+}
+
+function buildMassApplyUpdates() {
+  const updates = {};
+  const hoursRaw = (document.getElementById('mass_hours')?.value || '').trim();
+  const slotsRaw = (document.getElementById('mass_slots')?.value || '').trim();
+  const balanceRaw = (document.getElementById('mass_balance')?.value || '').trim();
+  const license = (document.getElementById('mass_license')?.value || '').trim();
+  const position = (document.getElementById('mass_position')?.value || '').trim();
+  const multiplierRaw = (document.getElementById('mass_multiplier')?.value || '').trim();
+  const ratingsRaw = (document.getElementById('mass_ratings')?.value || '').trim();
+  const employer = (document.getElementById('mass_employer')?.value || '').trim();
+  const baseAirport = (document.getElementById('mass_base')?.value || '').trim().toUpperCase();
+  const refreshOverride = getMassApplyBooleanValue('mass_refreshOverride');
+  const acceptanceOverride = getMassApplyBooleanValue('mass_acceptanceOverride');
+  const simbriefTrackingOverride = getMassApplyBooleanValue('mass_simbriefTrackingOverride');
+
+  if (hoursRaw) {
+    const hours = parsePositiveInteger(hoursRaw);
+    if (hours === null) return { error: 'Hours must be a positive integer.' };
+    updates.hours = hours;
+  }
+  if (slotsRaw) {
+    const jobSlots = parsePositiveInteger(slotsRaw);
+    if (jobSlots === null) return { error: 'Jobs / Job slots must be a positive integer.' };
+    updates.job_slots = jobSlots;
+  }
+  if (balanceRaw) {
+    const balance = parsePositiveInteger(balanceRaw);
+    if (balance === null) return { error: 'Balance must be a positive integer.' };
+    updates.balance = balance;
+  }
+  if (license) {
+    if (!VALID_LICENSE_SET.has(license)) return { error: `License must be one of: ${LICENSE_OPTIONS.join(', ')}.` };
+    updates.license = license;
+  }
+  if (position) updates.position = position;
+  if (multiplierRaw) {
+    const multiplier = Number(multiplierRaw);
+    if (!Number.isFinite(multiplier) || multiplier <= 0) return { error: 'Pay multiplier must be a positive number.' };
+    updates.pay_multiplier = multiplier;
+  }
+  if (ratingsRaw) {
+    const { ratings, invalidTokens } = sanitizeTypeRatings(ratingsRaw);
+    if (invalidTokens.length) return { error: `Invalid ratings: ${invalidTokens.join(', ')}.` };
+    updates.type_ratings = ratings;
+  }
+  if (employer) updates.employer = employer;
+  if (baseAirport) {
+    if (!ICAO_REGEX.test(baseAirport)) return { error: 'Base airport must be a valid ICAO code (4 letters, e.g. KJFK).' };
+    updates.base_airport = baseAirport;
+  }
+  if (refreshOverride !== null) updates.job_refresh_admin_override = refreshOverride;
+  if (acceptanceOverride !== null) updates.job_acceptance_admin_override = acceptanceOverride;
+  if (simbriefTrackingOverride !== null) updates.simbrief_tracking_admin_enabled = simbriefTrackingOverride;
+
+  if (!Object.keys(updates).length) return { error: 'Set at least one field before mass apply.' };
+  return { updates };
+}
+
+async function fetchAllProfileIds() {
+  const ids = [];
+  const pageSize = 200;
+  let from = 0;
+
+  while (true) {
+    const { data, error } = await supabaseClient
+      .from('profiles')
+      .select('id')
+      .order('created_at', { ascending: false })
+      .range(from, from + pageSize - 1);
+    if (error) return { error };
+    if (!data?.length) break;
+    data.forEach((row) => ids.push(row.id));
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+  return { ids };
+}
+
+async function massApplyProfiles() {
+  const { updates, error: validationError } = buildMassApplyUpdates();
+  if (validationError) {
+    alert(validationError);
+    return;
+  }
+
+  const { ids, error: fetchError } = await fetchAllProfileIds();
+  if (fetchError) {
+    alert(fetchError.message || 'Failed to load users for mass apply.');
+    return;
+  }
+
+  if (!ids?.length) {
+    alert('No users found to update.');
+    return;
+  }
+
+  const confirmed = window.confirm(`Apply selected fields to ${ids.length} users?`);
+  if (!confirmed) return;
+
+  let successCount = 0;
+  let failedCount = 0;
+  let firstErrorMessage = '';
+  const failureMessages = new Set();
+
+  for (let i = 0; i < ids.length; i += MASS_APPLY_BATCH_SIZE) {
+    const chunk = ids.slice(i, i + MASS_APPLY_BATCH_SIZE);
+    const chunkResults = await Promise.all(chunk.map(async (profileId) => {
+      try {
+        return await updateProfileRecord(profileId, updates);
+      } catch (error) {
+        return { message: error?.message || 'Unexpected mass update failure' };
+      }
+    }));
+    chunkResults.forEach((updateError) => {
+      if (updateError) {
+        failedCount += 1;
+        const message = updateError.message || 'Unknown update error';
+        if (!firstErrorMessage) firstErrorMessage = message;
+        failureMessages.add(message);
+      } else {
+        successCount += 1;
+      }
+    });
+  }
+
+  if (failedCount > 0) {
+    const errorSummary = [...failureMessages].slice(0, 3).join(' | ');
+    alert(`Mass apply finished. Updated ${successCount}/${ids.length} users. Failed: ${failedCount}. Errors: ${errorSummary || firstErrorMessage}`);
+  } else {
+    alert(`Mass apply finished. Updated ${successCount} users.`);
+  }
+
+  await loadProfiles();
+}
+
+async function saveSelectedProfile() {
+  const profileId = document.getElementById('profileSelect')?.value || '';
+  if (!profileId) {
+    alert('Select a user first.');
+    return;
+  }
+  await saveProfile(profileId);
+}
+
 window.unlockAdmin = unlockAdmin;
 window.loadProfiles = loadProfiles;
 window.saveProfile = saveProfile;
+window.selectProfileFromDropdown = selectProfileFromDropdown;
+window.saveSelectedProfile = saveSelectedProfile;
+window.massApplyProfiles = massApplyProfiles;
 
 ensureBaseAirportDatalist();

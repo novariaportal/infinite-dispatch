@@ -23,6 +23,58 @@
           <input type="text" id="profileIdSearch" placeholder="Filter by profile UUID (optional)">
           <button onclick="loadProfiles()">Load Users</button>
         </div>
+        <div class="input-group">
+          <select id="profileSelect" onchange="selectProfileFromDropdown()">
+            <option value="">Select a user</option>
+          </select>
+          <button onclick="saveSelectedProfile()">Save Selected User</button>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Mass Apply to All Users</h3>
+        <p class="muted">Fill only fields you want to apply. Leave blank to skip.</p>
+        <label>Hours</label>
+        <input id="mass_hours" type="number" min="1" step="1" placeholder="Leave blank to skip">
+        <label>Jobs / Job Slots</label>
+        <input id="mass_slots" type="number" min="1" step="1" placeholder="Leave blank to skip">
+        <label>License(s)</label>
+        <select id="mass_license">
+          <option value="">Do not change</option>
+          <option value="CPL">CPL</option>
+          <option value="MPL">MPL</option>
+          <option value="ATPL">ATPL</option>
+        </select>
+        <label>Position</label>
+        <input id="mass_position" type="text" placeholder="Leave blank to skip">
+        <label>Pay Multiplier</label>
+        <input id="mass_multiplier" type="number" step="0.1" placeholder="Leave blank to skip">
+        <label>Type Ratings (comma separated)</label>
+        <input id="mass_ratings" type="text" placeholder="Leave blank to skip">
+        <label>Money / Balance</label>
+        <input id="mass_balance" type="number" min="1" step="1" placeholder="Leave blank to skip">
+        <label>Employer</label>
+        <input id="mass_employer" type="text" placeholder="Leave blank to skip">
+        <label>Base Airport (ICAO format)</label>
+        <input id="mass_base" type="text" maxlength="4" placeholder="Leave blank to skip">
+        <label>Admin override refresh limit</label>
+        <select id="mass_refreshOverride">
+          <option value="">Do not change</option>
+          <option value="true">Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+        <label>Force 100% job acceptance chance</label>
+        <select id="mass_acceptanceOverride">
+          <option value="">Do not change</option>
+          <option value="true">Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+        <label>Enable SimBrief-only tracking start</label>
+        <select id="mass_simbriefTrackingOverride">
+          <option value="">Do not change</option>
+          <option value="true">Enabled</option>
+          <option value="false">Disabled</option>
+        </select>
+        <button onclick="massApplyProfiles()">Mass Apply to All Users</button>
       </div>
       <div id="profilesContainer" class="list"></div>
     </section>
