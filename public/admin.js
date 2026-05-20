@@ -701,15 +701,19 @@ async function massApplyProfiles() {
   let successCount = 0;
   let failedCount = 0;
   let firstErrorMessage = '';
+  const batchSize = 10;
 
-  for (const profileId of ids) {
-    const updateError = await updateProfileRecord(profileId, updates);
-    if (updateError) {
-      failedCount += 1;
-      if (!firstErrorMessage) firstErrorMessage = updateError.message || 'Unknown update error';
-      continue;
-    }
-    successCount += 1;
+  for (let i = 0; i < ids.length; i += batchSize) {
+    const chunk = ids.slice(i, i + batchSize);
+    const chunkResults = await Promise.all(chunk.map((profileId) => updateProfileRecord(profileId, updates)));
+    chunkResults.forEach((updateError) => {
+      if (updateError) {
+        failedCount += 1;
+        if (!firstErrorMessage) firstErrorMessage = updateError.message || 'Unknown update error';
+      } else {
+        successCount += 1;
+      }
+    });
   }
 
   if (failedCount > 0) {
