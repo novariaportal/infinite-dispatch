@@ -34,6 +34,18 @@
     <p class="muted">Latest updates to gameplay, tracking, and quality-of-life improvements.</p>
 
     <div class="card">
+      <h2>2026-05-20</h2>
+      <ul>
+        <li>Retired legacy in-memory auth/dispatch APIs by default and isolated them behind `LOCAL_DEMO_MODE=1` for local demo-only usage.</li>
+        <li>Added structured client/server telemetry logging and timeout/retry handling for SimBrief, AirLabs, IFC proxy, and livery API requests.</li>
+        <li>Added a guided First Flight Wizard to the dashboard with next-step CTAs and clearer onboarding progress states.</li>
+        <li>Added shared domain validation rules, Supabase migration-safe data-integrity constraints, and stricter profile/tracking input guards.</li>
+        <li>Added unit tests for auth validation, job acceptance logic, dispatch validation, tracking completion, and payout calculations plus a CI workflow.</li>
+        <li>Added pull request template checklist that requires changelog updates on every user-facing change.</li>
+      </ul>
+    </div>
+
+    <div class="card">
       <h2>2026-05-19</h2>
       <ul>
         <li>Added inline admin-side profile validation that blocks invalid saves.</li>
