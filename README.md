@@ -158,6 +158,22 @@ alter table public.flight_tracking add column if not exists identity_link_userna
 alter table public.flight_tracking add column if not exists identity_link_verified_at timestamp with time zone;
 ```
 
+Recommended integrity constraints:
+
+```sql
+alter table public.profiles
+  add constraint profiles_hours_non_negative check (hours >= 0),
+  add constraint profiles_balance_non_negative check (balance >= 0),
+  add constraint profiles_job_slots_non_negative check (job_slots >= 0),
+  add constraint profiles_license_valid check (license in ('PPL', 'CPL', 'MPL', 'ATPL')),
+  add constraint profiles_position_valid check (position in ('FO', 'SFO', 'CPT', 'SR CPT')),
+  add constraint profiles_base_airport_icao check (base_airport ~ '^[A-Z]{4}$');
+
+alter table public.flight_tracking
+  add constraint flight_tracking_status_valid check (status in ('enroute', 'completed', 'cancelled')),
+  add constraint flight_tracking_server_type_valid check (server_type in ('casual', 'training', 'expert'));
+```
+
 3. In **Auth → Providers**, enable **Email**.
 
 ---
@@ -182,6 +198,19 @@ npm install
 npm start
 ```
 Then open: `http://localhost:3000`
+
+By default, `server.js` runs static hosting + telemetry endpoint only, with production behavior relying on Supabase auth/data.
+If you need the legacy in-memory demo API routes, run:
+
+```bash
+LOCAL_DEMO_MODE=1 npm start
+```
+
+Run basic automated checks:
+
+```bash
+npm test
+```
 
 ---
 

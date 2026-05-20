@@ -4,7 +4,8 @@
   "description": "Virtual career mode for Infinite Flight",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
     "axios": "^1.6.0",

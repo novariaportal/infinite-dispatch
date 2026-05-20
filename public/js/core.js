@@ -1,3 +1,13 @@
+import {
+  getFirstFlightWizardState,
+  getJobAcceptanceChance,
+  validateAuthInput,
+  validateDispatchLegs,
+  validateJobAcceptance,
+  validateProfileIntegrity,
+  validateRegistrationInput
+} from './domain.mjs';
+
 const supabaseUrl = window.SUPABASE_URL;
 const supabasePublishableKey = window.SUPABASE_PUBLISHABLE_KEY;
 
@@ -34,6 +44,9 @@ const AIRLABS_FRONTEND_CACHE_TTL_MS = 2 * 60 * 1000;
 const AIRLABS_FRONTEND_CACHE_MAX_ENTRIES = 120;
 const MS_PER_MINUTE = 60 * 1000;
 const MS_PER_HOUR = 60 * MS_PER_MINUTE;
+const PROFILE_READ_CACHE_TTL_MS = 60 * 1000;
+const TRACKING_READ_CACHE_TTL_MS = 20 * 1000;
+const FETCH_TIMEOUT_MS = 12000;
 const JOB_MARKET_REFRESH_LIMIT = 2;
 const JOB_MARKET_REFRESH_WINDOW_MS = 36 * MS_PER_HOUR;
 const MAX_JOB_GENERATION_ATTEMPTS_PER_CYCLE = 20;
@@ -86,6 +99,7 @@ let lastJobMarketFailure = null;
 let hasTrackingHistory = false;
 let hasCompletedTrackedFlight = false;
 let recentActivity = [];
+const queryReadCache = new Map();
 
 const POPULARITY_MULTIPLIER = {
   'Airbus A320': 1.06,
@@ -420,6 +434,78 @@ function escapeHtml(value = '') {
     .replace(/'/g, '&#39;');
 }
 
+function logClientError(event, error, context = {}) {
+  const payload = {
+    event,
+    level: 'error',
+    message: error?.message || String(error),
+    stack: error?.stack || null,
+    context,
+    at: new Date().toISOString()
+  };
+  console.error('[InfiniteDispatchClientError]', payload);
+  fetch('/api/telemetry', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  }).catch(() => {});
+}
+
+function clearReadCache(prefix) {
+  if (!prefix) {
+    queryReadCache.clear();
+    return;
+  }
+  Array.from(queryReadCache.keys())
+    .filter((key) => key.startsWith(prefix))
+    .forEach((key) => queryReadCache.delete(key));
+}
+
+async function readWithCache(key, ttlMs, loader, forceRefresh = false) {
+  const now = Date.now();
+  const cached = queryReadCache.get(key);
+  if (!forceRefresh && cached && cached.expiresAt > now) {
+    return cached.value;
+  }
+  const value = await loader();
+  queryReadCache.set(key, { value, expiresAt: now + ttlMs });
+  return value;
+}
+
+async function fetchJsonWithRetry(url, options = {}, behavior = {}) {
+  const retries = Math.max(0, Number(behavior.retries ?? 2));
+  const timeoutMs = Math.max(1000, Number(behavior.timeoutMs ?? FETCH_TIMEOUT_MS));
+  const context = behavior.context || 'FETCH';
+  const retryableStatusCodes = behavior.retryableStatusCodes || [408, 429, 500, 502, 503, 504];
+  let lastError = null;
+
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (!response.ok) {
+        if (attempt < retries && retryableStatusCodes.includes(response.status)) {
+          await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+          continue;
+        }
+        throw new Error(`${context} failed with HTTP ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      clearTimeout(timeoutId);
+      lastError = error;
+      if (attempt < retries) {
+        await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+        continue;
+      }
+    }
+  }
+
+  throw lastError || new Error(`${context} failed`);
+}
+
 function formatAirlabsStatusText() {
   const detail = lastAirlabsHealth.detail ? ` — ${lastAirlabsHealth.detail}` : '';
   return `AirLabs Status: ${lastAirlabsHealth.code}${detail}`;
@@ -749,22 +835,16 @@ async function fetchAirlabsRoutes(params = {}) {
   }
 
   try {
-    const res = await fetch(`${supabaseUrl}/functions/v1/airlabs-routes?${query.toString()}`, {
-      headers: {
-        apikey: supabasePublishableKey,
-        Authorization: `Bearer ${supabasePublishableKey}`
-      }
-    });
-    if (!res.ok) {
-      lastAirlabsHealth = {
-        code: `AIRLABS_HTTP_${res.status}`,
-        ok: false,
-        detail: `Edge function returned HTTP ${res.status}.`
-      };
-      renderDiagnosticsPage();
-      return { data: [], request: { has_more: false } };
-    }
-    const payload = await res.json();
+    const payload = await fetchJsonWithRetry(
+      `${supabaseUrl}/functions/v1/airlabs-routes?${query.toString()}`,
+      {
+        headers: {
+          apikey: supabasePublishableKey,
+          Authorization: `Bearer ${supabasePublishableKey}`
+        }
+      },
+      { context: 'AIRLABS_PROXY', retries: 2, timeoutMs: 10000 }
+    );
     lastAirlabsHealth = {
       code: 'AIRLABS_OK',
       ok: true,
@@ -773,6 +853,7 @@ async function fetchAirlabsRoutes(params = {}) {
     renderDiagnosticsPage();
     return payload || { data: [], request: { has_more: false } };
   } catch (error) {
+    logClientError('AIRLABS_FETCH_FAILED', error, { query: query.toString() });
     lastAirlabsHealth = {
       code: 'AIRLABS_FETCH_FAILED',
       ok: false,
@@ -1054,6 +1135,15 @@ function showPage(pageId) {
   navBtns.forEach((btn) => btn.classList.toggle('active', btn.dataset.page === effectivePage));
 
   if (effectivePage === 'diagnosticsPage') renderDiagnosticsPage(true);
+  if (effectivePage === 'shopPage' && currentProfile) {
+    loadAircraftCatalog()
+      .then(() => renderPilotShop())
+      .catch((error) => logClientError('SHOP_LAZY_LOAD_FAILED', error));
+  }
+  if (effectivePage === 'historyPage' && currentProfile) {
+    loadTrackingHistory()
+      .catch((error) => logClientError('TRACKING_LAZY_LOAD_FAILED', error));
+  }
 }
 
 function previewLandingFlow(targetPage) {
@@ -1207,7 +1297,10 @@ async function completePasswordRecovery() {
 async function createProfile(user, baseAirport) {
   const totalHours = 0;
   const prog = getProgression(totalHours);
-  const normalizedBaseAirport = baseAirport.trim().toUpperCase();
+  const normalizedBaseAirport = String(baseAirport || '').trim().toUpperCase();
+  if (!/^[A-Z]{4}$/.test(normalizedBaseAirport) || !AIRPORTS[normalizedBaseAirport]) {
+    throw new Error('Base airport must be a valid ICAO code.');
+  }
   const starterTypeRating = await pickRandomStarterTypeRating();
 
   const profile = {
@@ -1228,6 +1321,10 @@ async function createProfile(user, baseAirport) {
     job_acceptance_admin_override: false,
     simbrief_tracking_admin_enabled: false
   };
+  const profileIntegrity = validateProfileIntegrity(profile);
+  if (!profileIntegrity.ok) {
+    throw new Error(profileIntegrity.errors.join(' '));
+  }
 
   let { error } = await supabaseClient.from('profiles').insert([profile]);
   if (error && isMissingSimBriefTrackingColumnError(error)) {
@@ -1254,15 +1351,17 @@ async function createProfile(user, baseAirport) {
 }
 
 async function getProfile(userId) {
-  const { data, error } = await supabaseClient
-    .from('profiles')
-    .select('*')
-    .eq('id', userId)
-    .maybeSingle();
+  return readWithCache(`profile:${userId}`, PROFILE_READ_CACHE_TTL_MS, async () => {
+    const { data, error } = await supabaseClient
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle();
 
-  if (error) throw error;
-  if (!data) throw new Error('row not found');
-  return withJobAcceptanceDefaults(withSimBriefTrackingDefaults(withIdentityDefaults(data)));
+    if (error) throw error;
+    if (!data) throw new Error('row not found');
+    return withJobAcceptanceDefaults(withSimBriefTrackingDefaults(withIdentityDefaults(data)));
+  });
 }
 
 async function ensureProfile(user, baseAirportMaybe) {
@@ -1274,13 +1373,14 @@ async function ensureProfile(user, baseAirportMaybe) {
 
     if (!isMissing) throw e;
 
-    const baseAirport = (baseAirportMaybe || '').trim();
-    if (baseAirport.length < 4) {
+    const baseAirport = String(baseAirportMaybe || '').trim().toUpperCase();
+    if (!/^[A-Z]{4}$/.test(baseAirport) || !AIRPORTS[baseAirport]) {
       const entered = prompt('Profile not found. Enter your Base Airport ICAO (e.g., WSSS):');
-      if (!entered || entered.trim().length < 4) {
+      const normalizedEntered = String(entered || '').trim().toUpperCase();
+      if (!/^[A-Z]{4}$/.test(normalizedEntered) || !AIRPORTS[normalizedEntered]) {
         throw new Error('Base Airport is required to create your profile.');
       }
-      return createProfile(user, entered);
+      return createProfile(user, normalizedEntered);
     }
 
     return createProfile(user, baseAirport);
@@ -1301,7 +1401,11 @@ async function refreshDerivedProfile(profile) {
   if (enrichedProfile.job_slots !== jobSlots) updates.job_slots = jobSlots;
   if (enrichedProfile.employer !== effectiveEmployer) updates.employer = effectiveEmployer;
 
-  if (Object.keys(updates).length === 0) return enrichedProfile;
+  if (Object.keys(updates).length === 0) {
+    const profileIntegrity = validateProfileIntegrity(enrichedProfile);
+    if (!profileIntegrity.ok) throw new Error(profileIntegrity.errors.join(' '));
+    return enrichedProfile;
+  }
 
   const { data, error } = await supabaseClient
     .from('profiles')
@@ -1311,7 +1415,11 @@ async function refreshDerivedProfile(profile) {
     .single();
 
   if (error) throw error;
-  return withJobAcceptanceDefaults(withIdentityDefaults(data));
+  const updatedProfile = withJobAcceptanceDefaults(withIdentityDefaults(data));
+  const profileIntegrity = validateProfileIntegrity(updatedProfile);
+  if (!profileIntegrity.ok) throw new Error(profileIntegrity.errors.join(' '));
+  clearReadCache(`profile:${updatedProfile.id}`);
+  return updatedProfile;
 }
 
 async function persistIdentityLinkUpdates(updates) {
@@ -1333,6 +1441,7 @@ async function persistIdentityLinkUpdates(updates) {
   }
 
   currentProfile = withIdentityDefaults(data);
+  clearReadCache(`profile:${currentProfile.id}`);
   renderDashboard(currentProfile);
   return true;
 }
@@ -1388,24 +1497,7 @@ async function checkDiscourseVerificationFlow() {
   const endpoint = buildIfcProfileJsonUrl(username);
 
   try {
-    const res = await fetch(endpoint);
-    if (!res.ok) {
-      lastIfcProxyHealth = {
-        code: `IFC_PROXY_HTTP_${res.status}`,
-        ok: false,
-        detail: `IFC profile proxy returned HTTP ${res.status}.`
-      };
-      renderDiagnosticsPage();
-      await persistIdentityLinkUpdates({
-        ifc_link_status: 'failed',
-        ifc_link_last_checked_at: nowIso,
-        ifc_link_last_error: `IFC profile fetch failed (${res.status})`
-      });
-      alert('Unable to fetch IFC profile right now. Try again shortly.');
-      return;
-    }
-
-    const payload = await res.json();
+    const payload = await fetchJsonWithRetry(endpoint, {}, { context: 'IFC_PROFILE_PROXY', retries: 1, timeoutMs: 10000 });
     lastIfcProxyHealth = {
       code: 'IFC_PROXY_OK',
       ok: true,
@@ -1441,6 +1533,7 @@ async function checkDiscourseVerificationFlow() {
       showToast('IFC account verified.', 'success');
     }
   } catch (err) {
+    logClientError('IFC_VERIFICATION_CHECK_FAILED', err, { username });
     lastIfcProxyHealth = {
       code: 'IFC_PROXY_FETCH_FAILED',
       ok: false,
@@ -1467,7 +1560,8 @@ async function login() {
   const email = document.getElementById('loginEmail')?.value?.trim();
   const password = document.getElementById('loginPassword')?.value;
 
-  if (!email || !password) return alert('Enter email and password');
+  const validation = validateAuthInput({ email, password });
+  if (!validation.ok) return alert(validation.errors.join('\n'));
 
   try {
     setAuthButtonLoading('loginBtn', true, 'Logging in...', 'Login');
@@ -1482,7 +1576,7 @@ async function login() {
       await initializeDashboard();
     }
   } catch (err) {
-    console.error('Login error:', err);
+    logClientError('LOGIN_FAILED', err, { email: String(email || '').toLowerCase() });
     alert(err?.message || String(err));
   } finally {
     setAuthButtonLoading('loginBtn', false, 'Logging in...', 'Login');
@@ -1494,10 +1588,8 @@ async function registerAccount() {
   const password = document.getElementById('registerPassword')?.value;
   const baseAirport = document.getElementById('registerBaseAirport')?.value;
 
-  if (!email || !password) return alert('Enter email and password');
-  if (!baseAirport || baseAirport.trim().length < 4) {
-    return alert('Enter a Base Airport ICAO code (e.g., WSSS) to register.');
-  }
+  const validation = validateRegistrationInput({ email, password, baseAirport });
+  if (!validation.ok) return alert(validation.errors.join('\n'));
 
   try {
     setAuthButtonLoading('registerBtn', true, 'Registering...', 'Register');
@@ -1510,7 +1602,7 @@ async function registerAccount() {
       return;
     }
 
-    await createProfile(user, baseAirport);
+    await createProfile(user, validation.normalized.baseAirport);
     const loginResult = await supabaseClient.auth.signInWithPassword({ email, password });
     if (loginResult.error) {
       alert(loginResult.error.message);
@@ -1518,11 +1610,11 @@ async function registerAccount() {
     }
 
     currentUser = loginResult.data.user;
-    const profile = await ensureProfile(currentUser, baseAirport);
+    const profile = await ensureProfile(currentUser, validation.normalized.baseAirport);
     currentProfile = await refreshDerivedProfile(profile);
     await initializeDashboard();
   } catch (err) {
-    console.error('Register error:', err);
+    logClientError('REGISTER_FAILED', err, { email: String(email || '').toLowerCase() });
     alert(err?.message || String(err));
   } finally {
     setAuthButtonLoading('registerBtn', false, 'Registering...', 'Register');
@@ -1726,17 +1818,11 @@ async function fetchAircraftOperators(aircraftId) {
   }
 
   try {
-    const res = await fetch(`https://api.infiniteflight.com/public/v2/aircraft/${aircraftId}/liveries?apikey=${LIVERY_API_KEY}`);
-    if (!res.ok) {
-      lastLiveryApiHealth = {
-        code: `LIVERY_API_HTTP_${res.status}`,
-        ok: false,
-        detail: `Livery API returned HTTP ${res.status}.`
-      };
-      renderDiagnosticsPage();
-      return liveryCache[aircraftId] || [];
-    }
-    const payload = await res.json();
+    const payload = await fetchJsonWithRetry(
+      `https://api.infiniteflight.com/public/v2/aircraft/${aircraftId}/liveries?apikey=${LIVERY_API_KEY}`,
+      {},
+      { context: 'LIVERY_API_FETCH', retries: 1, timeoutMs: 10000 }
+    );
     const liveries = Array.isArray(payload?.result) ? payload.result : [];
 
     const operators = uniqueStrings(
@@ -1755,6 +1841,7 @@ async function fetchAircraftOperators(aircraftId) {
     renderDiagnosticsPage();
     return operators;
   } catch (err) {
+    logClientError('LIVERY_API_FETCH_FAILED', err, { aircraftId });
     lastLiveryApiHealth = {
       code: 'LIVERY_API_FETCH_FAILED',
       ok: false,
@@ -1878,6 +1965,7 @@ async function persistJobRefreshUsage(used, windowStartedAt) {
   }
 
   currentProfile = result.data;
+  clearReadCache(`profile:${currentProfile.id}`);
   return true;
 }
 
@@ -2145,11 +2233,16 @@ async function loadJobMarket() {
 function acceptJob(jobId) {
   const job = availableJobs.find((j) => j.id === jobId);
   if (!job) return;
+  const validation = validateJobAcceptance(currentProfile, job);
+  if (!validation.ok) {
+    alert(validation.errors.join('\n'));
+    return;
+  }
   if (!pilotOwnsTypeForAircraft(currentProfile, job.aircraft)) {
     alert('You do not hold the required type rating for this aircraft.');
     return;
   }
-  const acceptanceChance = getJobAcceptanceChance(currentProfile);
+  const acceptanceChance = validation.acceptanceChance;
   if (!rollJobAcceptance(acceptanceChance)) {
     const percent = Math.round(acceptanceChance * 100);
     alert(`Application rejected by ${job.airline}. Current acceptance chance: ${percent}%.`);
@@ -2177,18 +2270,6 @@ function acceptJob(jobId) {
   renderQuickActions();
   if (currentProfile) renderOnboardingCard(currentProfile);
   showPage('dispatchPage');
-}
-
-function getJobAcceptanceChance(profile) {
-  if (profile?.job_acceptance_admin_override) return 1;
-
-  const position = String(profile?.position || '').trim().toUpperCase();
-  const license = String(profile?.license || '').trim().toUpperCase();
-
-  if (position === 'SR CPT' || license === 'ATPL') return 0.9;
-  if (position === 'CPT' || license === 'MPL') return 0.75;
-  if (license === 'CPL') return 0.5;
-  return 0.3;
 }
 
 function rollJobAcceptance(chance) {
@@ -2384,6 +2465,7 @@ async function generateDispatch() {
   try {
     legs = await buildAirlabsDispatchLegs(base, acceptedJob.airline, acceptedJob.aircraft, acceptedJob.airlabsSeedLeg || null);
   } catch (err) {
+    logClientError('DISPATCH_AIRLABS_BUILD_FAILED', err, { airline: acceptedJob?.airline, aircraft: acceptedJob?.aircraft });
     console.warn('AirLabs dispatch generation failed, using fallback:', err);
   }
 
@@ -2394,6 +2476,11 @@ async function generateDispatch() {
 
   if (legs.length < 2 || legs.length > 3) {
     alert('Unable to generate a valid multi-leg route. Try another job.');
+    return;
+  }
+  const legValidation = validateDispatchLegs(legs);
+  if (!legValidation.ok) {
+    alert(legValidation.errors.join('\n'));
     return;
   }
 
@@ -2525,6 +2612,7 @@ async function buyLicense(licenseCode) {
   }
 
   currentProfile = data;
+  clearReadCache(`profile:${currentProfile.id}`);
   renderDashboard(currentProfile);
   renderPilotShop();
   await loadJobMarket();
@@ -2572,6 +2660,7 @@ async function buyTypeRating(aircraftId) {
   }
 
   currentProfile = data;
+  clearReadCache(`profile:${currentProfile.id}`);
   renderDashboard(currentProfile);
   renderPilotShop();
   await loadJobMarket();
@@ -2624,6 +2713,7 @@ async function createTrackingSession(trackingSource) {
     .limit(1)
     .maybeSingle();
   if (existingTrackingError) {
+    logClientError('TRACKING_LOOKUP_FAILED', existingTrackingError, { userId: currentUser?.id });
     console.warn('Failed to check existing tracking session:', existingTrackingError.message);
     return null;
   }
@@ -2632,14 +2722,16 @@ async function createTrackingSession(trackingSource) {
   const payload = {
     user_id: currentUser.id,
     callsign,
-    origin: source.origin || latestSimbriefPlan?.origin?.icao_code || null,
-    destination: source.destination || latestSimbriefPlan?.destination?.icao_code || null,
+    origin: String(source.origin || latestSimbriefPlan?.origin?.icao_code || '').trim().toUpperCase() || null,
+    destination: String(source.destination || latestSimbriefPlan?.destination?.icao_code || '').trim().toUpperCase() || null,
     status: 'enroute',
     server_type: serverType,
     identity_link_status: currentProfile?.ifc_link_status || 'unlinked',
     identity_link_username: currentProfile?.discourse_username || null,
     identity_link_verified_at: currentProfile?.ifc_link_verified_at || null
   };
+  if (payload.origin && !/^[A-Z]{4}$/.test(payload.origin)) payload.origin = null;
+  if (payload.destination && !/^[A-Z]{4}$/.test(payload.destination)) payload.destination = null;
 
   let { data, error } = await supabaseClient
     .from('flight_tracking')
@@ -2660,10 +2752,12 @@ async function createTrackingSession(trackingSource) {
   }
 
   if (error) {
+    logClientError('TRACKING_CREATE_FAILED', error, { userId: currentUser?.id, callsign });
     console.warn('Failed to start tracking:', error.message);
     return null;
   }
 
+  clearReadCache(`tracking:${currentUser.id}`);
   return data;
 }
 
@@ -2676,8 +2770,11 @@ async function fetchSimBrief() {
   document.getElementById('sbResult').innerText = 'Fetching...';
 
   try {
-    const res = await fetch(`https://www.simbrief.com/api/xml.fetcher.php?username=${encodeURIComponent(sbUser)}&json=1`);
-    const data = await res.json();
+    const data = await fetchJsonWithRetry(
+      `https://www.simbrief.com/api/xml.fetcher.php?username=${encodeURIComponent(sbUser)}&json=1`,
+      {},
+      { context: 'SIMBRIEF_FETCH', retries: 2, timeoutMs: 12000 }
+    );
 
     if (data.general) {
       latestSimbriefPlan = data;
@@ -2694,6 +2791,7 @@ async function fetchSimBrief() {
       updateStartTrackingButtonVisibility();
     }
   } catch (err) {
+    logClientError('SIMBRIEF_FETCH_FAILED', err, { username: sbUser });
     latestSimbriefPlan = null;
     document.getElementById('sbResult').innerText = 'Error fetching SimBrief data.';
     updateStartTrackingButtonVisibility();
@@ -2747,6 +2845,7 @@ async function dispatchFlight() {
 
   const tracking = await createTrackingSession(source);
   if (!tracking) {
+    logClientError('TRACKING_START_FAILED', new Error('Tracking session creation returned null'), { source });
     alert('Unable to start tracking. Check Supabase setup.');
     return;
   }
@@ -2756,23 +2855,36 @@ async function dispatchFlight() {
   showToast('Tracking session started.', 'success');
   document.getElementById('startTrackingBtn').style.display = 'none';
   renderQuickActions();
-  await loadTrackingHistory();
+  await loadTrackingHistory(true);
   showPage('historyPage');
 }
 
-async function loadTrackingHistory() {
+async function loadTrackingHistory(forceRefresh = false) {
   const list = document.getElementById('trackingHistory');
   const empty = document.getElementById('trackingHistoryEmpty');
   if (!list || !empty || !currentUser) return;
 
-  const { data, error } = await supabaseClient
-    .from('flight_tracking')
-    .select('callsign, origin, destination, status, server_type, created_at, last_lat, last_lng, last_speed')
-    .eq('user_id', currentUser.id)
-    .order('created_at', { ascending: false })
-    .limit(8);
+  let response;
+  try {
+    response = await readWithCache(
+      `tracking:${currentUser.id}`,
+      TRACKING_READ_CACHE_TTL_MS,
+      () => supabaseClient
+        .from('flight_tracking')
+        .select('callsign, origin, destination, status, server_type, created_at, last_lat, last_lng, last_speed')
+        .eq('user_id', currentUser.id)
+        .order('created_at', { ascending: false })
+        .limit(8),
+      forceRefresh
+    );
+  } catch (error) {
+    logClientError('TRACKING_HISTORY_LOAD_FAILED', error, { userId: currentUser?.id });
+    return;
+  }
+  const { data, error } = response;
 
   if (error) {
+    logClientError('TRACKING_HISTORY_QUERY_FAILED', error, { userId: currentUser?.id });
     console.warn('Failed to load tracking history:', error.message);
     return;
   }
@@ -2853,6 +2965,41 @@ function renderOnboardingCard(profile) {
   onboardingList.innerHTML = checks
     .map((check) => `<li>${check.done ? '✅' : '⬜'} ${check.label}</li>`)
     .join('');
+  renderFirstFlightWizard(profile);
+}
+
+function runWizardStep(targetPage) {
+  if (!targetPage) return;
+  showPage(targetPage);
+}
+
+function renderFirstFlightWizard(profile) {
+  const host = document.getElementById('firstFlightWizard');
+  if (!host) return;
+  const state = getFirstFlightWizardState({
+    profile,
+    hasAcceptedJob: Boolean(acceptedJob),
+    hasDispatch: Boolean(latestGeneratedDispatch?.legs?.length),
+    hasTrackingHistory,
+    hasCompletedTrackedFlight
+  });
+  const progress = `${state.completeCount}/${state.total}`;
+  if (state.complete) {
+    host.innerHTML = `
+      <h4>First Flight Wizard</h4>
+      <p class="muted">All steps complete. Great work captain. ✅</p>
+      <p class="muted">Progress: ${progress}</p>
+    `;
+    return;
+  }
+
+  const next = state.nextStep;
+  host.innerHTML = `
+    <h4>First Flight Wizard</h4>
+    <p class="muted">Progress: ${progress}</p>
+    <p><strong>Next step:</strong> ${next.label}</p>
+    <button type="button" onclick="runWizardStep('${next.targetPage}')">${next.actionLabel}</button>
+  `;
 }
 
 async function initializeDashboard() {
@@ -2870,10 +3017,8 @@ async function initializeDashboard() {
   }
   applyAppearanceFromStorage();
   restoreLiveryCache();
-  await loadAircraftCatalog();
   if (currentProfile) {
-    await Promise.all([loadTrackingHistory(), loadJobMarket()]);
-    renderPilotShop();
+    await loadJobMarket();
   }
   tryOpenDiagnosticsFromHash();
 }
@@ -2921,6 +3066,7 @@ export {
   showPage,
   previewLandingFlow,
   previewLandingFlowFromKey,
+  runWizardStep,
   openAuth,
   login,
   registerAccount,

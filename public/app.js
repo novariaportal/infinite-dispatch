@@ -7,6 +7,7 @@ import {
   showPage,
   previewLandingFlow,
   previewLandingFlowFromKey,
+  runWizardStep,
   quickActionRefreshJobs,
   quickActionContinueDispatch,
   quickActionStartTracking,
@@ -51,6 +52,7 @@ window.openAuth = openAuth;
 window.showPage = showPage;
 window.previewLandingFlow = previewLandingFlow;
 window.previewLandingFlowFromKey = previewLandingFlowFromKey;
+window.runWizardStep = runWizardStep;
 window.login = login;
 window.registerAccount = registerAccount;
 window.logout = logout;
