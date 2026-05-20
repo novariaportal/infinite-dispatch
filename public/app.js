@@ -34,7 +34,8 @@ import {
 import {
   generateDispatch,
   fetchSimBrief,
-  dispatchFlight
+  dispatchFlight,
+  leaveAcceptedJob
 } from './js/dispatch.js';
 import {
   buyLicense,
@@ -58,6 +59,7 @@ window.resetPassword = resetPassword;
 window.completePasswordRecovery = completePasswordRecovery;
 window.fetchSimBrief = fetchSimBrief;
 window.dispatchFlight = dispatchFlight;
+window.leaveAcceptedJob = leaveAcceptedJob;
 window.loadJobMarket = loadJobMarket;
 window.requestJobMarketRefresh = requestJobMarketRefresh;
 window.acceptJob = acceptJob;

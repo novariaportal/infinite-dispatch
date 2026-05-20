@@ -501,6 +501,13 @@ function isMissingSimBriefTrackingColumnError(error) {
   return /simbrief_tracking_admin_enabled/i.test(message);
 }
 
+function isMissingJobAcceptanceOverrideColumnError(error) {
+  const code = String(error?.code || '').trim();
+  if (code === '42703' || code === 'PGRST204') return true;
+  const message = String(error?.message || '');
+  return /job_acceptance_admin_override/i.test(message);
+}
+
 function withIdentityDefaults(profile) {
   const normalizedUsername = String(profile?.discourse_username || '').trim() || null;
   const rawStatus = String(profile?.ifc_link_status || 'unlinked').trim().toLowerCase();
@@ -521,6 +528,13 @@ function withSimBriefTrackingDefaults(profile) {
   return {
     ...profile,
     simbrief_tracking_admin_enabled: Boolean(profile?.simbrief_tracking_admin_enabled)
+  };
+}
+
+function withJobAcceptanceDefaults(profile) {
+  return {
+    ...profile,
+    job_acceptance_admin_override: Boolean(profile?.job_acceptance_admin_override)
   };
 }
 
@@ -1211,6 +1225,7 @@ async function createProfile(user, baseAirport) {
     job_refreshes_used: 0,
     job_refresh_window_started_at: null,
     job_refresh_admin_override: false,
+    job_acceptance_admin_override: false,
     simbrief_tracking_admin_enabled: false
   };
 
@@ -1220,11 +1235,17 @@ async function createProfile(user, baseAirport) {
     delete fallbackProfile.simbrief_tracking_admin_enabled;
     ({ error } = await supabaseClient.from('profiles').insert([fallbackProfile]));
   }
+  if (error && isMissingJobAcceptanceOverrideColumnError(error)) {
+    const fallbackProfile = { ...profile };
+    delete fallbackProfile.job_acceptance_admin_override;
+    ({ error } = await supabaseClient.from('profiles').insert([fallbackProfile]));
+  }
   if (error && isMissingJobRefreshColumnError(error)) {
     const fallbackProfile = { ...profile };
     delete fallbackProfile.job_refreshes_used;
     delete fallbackProfile.job_refresh_window_started_at;
     delete fallbackProfile.job_refresh_admin_override;
+    delete fallbackProfile.job_acceptance_admin_override;
     delete fallbackProfile.simbrief_tracking_admin_enabled;
     ({ error } = await supabaseClient.from('profiles').insert([fallbackProfile]));
   }
@@ -1241,7 +1262,7 @@ async function getProfile(userId) {
 
   if (error) throw error;
   if (!data) throw new Error('row not found');
-  return withSimBriefTrackingDefaults(withIdentityDefaults(data));
+  return withJobAcceptanceDefaults(withSimBriefTrackingDefaults(withIdentityDefaults(data)));
 }
 
 async function ensureProfile(user, baseAirportMaybe) {
@@ -1267,7 +1288,7 @@ async function ensureProfile(user, baseAirportMaybe) {
 }
 
 async function refreshDerivedProfile(profile) {
-  const enrichedProfile = withIdentityDefaults(profile);
+  const enrichedProfile = withJobAcceptanceDefaults(withIdentityDefaults(profile));
   const prog = getProgression(enrichedProfile.hours || 0);
   const jobSlots = getJobSlotCount(enrichedProfile.hours || 0);
   const effectiveLicense = highestLicense(enrichedProfile.license, prog.license);
@@ -1290,7 +1311,7 @@ async function refreshDerivedProfile(profile) {
     .single();
 
   if (error) throw error;
-  return withIdentityDefaults(data);
+  return withJobAcceptanceDefaults(withIdentityDefaults(data));
 }
 
 async function persistIdentityLinkUpdates(updates) {
@@ -1899,7 +1920,7 @@ async function generatePassengerJob(index, failureCounter = null) {
     recordFailureCode(failureCounter, 'JOBGEN_INVALID_BASE_AIRPORT');
     return null;
   }
-  const preferredEmployer = normalizeAirlineName(currentProfile?.employer);
+  const preferredEmployer = resolveEmployerForBase(currentProfile?.base_airport, currentProfile?.employer);
   const validatedEmployer = preferredEmployer && AIRLINE_ROUTE_PROFILES[preferredEmployer]
     ? preferredEmployer
     : null;
@@ -2015,8 +2036,8 @@ function renderJobMarket() {
     item.className = 'list-item';
     item.innerHTML = `
       <div class="list-row"><strong>${normalizeAirlineName(job.airline) || 'Unknown Airline'}</strong><span>$${job.pay.toLocaleString()}</span></div>
-      <div class="list-row muted"><span>${job.aircraft}</span><span>${job.distanceNm} nm</span></div>
-      <div class="list-row muted"><span>Passenger Service: Yes</span><span>${getTypeRatingMultiplier(job.aircraft) > 1 ? 'Type Rating Bonus Applied' : 'Standard Type Rating Pay'}</span></div>
+      <div class="list-row muted"><span>${job.distanceNm} nm</span><span>Passenger Service: Yes</span></div>
+      <div class="list-row muted"><span>Aircraft assigned in Dispatch after acceptance.</span></div>
       <button onclick="acceptJob('${job.id}')">Accept Job</button>
     `;
     list.appendChild(item);
@@ -2128,6 +2149,14 @@ function acceptJob(jobId) {
     alert('You do not hold the required type rating for this aircraft.');
     return;
   }
+  const acceptanceChance = getJobAcceptanceChance(currentProfile);
+  if (!rollJobAcceptance(acceptanceChance)) {
+    const percent = Math.round(acceptanceChance * 100);
+    alert(`Application rejected by ${job.airline}. Current acceptance chance: ${percent}%.`);
+    recordRecentActivity(`Application rejected by ${job.airline}`);
+    showToast('Job application rejected.', 'warning');
+    return;
+  }
 
   acceptedJob = job;
   latestGeneratedDispatch = null;
@@ -2148,6 +2177,43 @@ function acceptJob(jobId) {
   renderQuickActions();
   if (currentProfile) renderOnboardingCard(currentProfile);
   showPage('dispatchPage');
+}
+
+function getJobAcceptanceChance(profile) {
+  if (profile?.job_acceptance_admin_override) return 1;
+
+  const position = String(profile?.position || '').trim().toUpperCase();
+  const license = String(profile?.license || '').trim().toUpperCase();
+
+  if (position === 'SR CPT' || license === 'ATPL') return 0.9;
+  if (position === 'CPT' || license === 'MPL') return 0.75;
+  if (license === 'CPL') return 0.5;
+  return 0.3;
+}
+
+function rollJobAcceptance(chance) {
+  if (chance >= 1) return true;
+  if (chance <= 0) return false;
+  return Math.random() < chance;
+}
+
+function leaveAcceptedJob() {
+  if (!acceptedJob) {
+    showToast('No active job to leave.', 'info');
+    return;
+  }
+
+  acceptedJob = null;
+  latestGeneratedDispatch = null;
+  previousDispatchRouteSource = null;
+  document.getElementById('acceptedJobDetails').innerHTML = 'No job accepted yet.';
+  document.getElementById('generateDispatchBtn').disabled = true;
+  document.getElementById('dispatchResult').innerText = 'No dispatch generated yet.';
+  document.getElementById('startTrackingBtn').style.display = 'none';
+  recordRecentActivity('Left accepted job');
+  showToast('Accepted job left.', 'info');
+  renderQuickActions();
+  if (currentProfile) renderOnboardingCard(currentProfile);
 }
 
 function getAirportRegion(icao) {
@@ -2871,6 +2937,7 @@ export {
   loadJobMarket,
   requestJobMarketRefresh,
   acceptJob,
+  leaveAcceptedJob,
   generateDispatch,
   buyLicense,
   buyTypeRating,

@@ -29,9 +29,10 @@ const DEFAULT_EMPLOYER_OPTIONS = [
 ];
 const PROFILE_SELECT_BASE_FIELDS = 'id, username, hours, job_slots, license, position, pay_multiplier, type_ratings, balance, employer, base_airport';
 const PROFILE_SELECT_REFRESH_FIELDS = 'job_refreshes_used, job_refresh_window_started_at, job_refresh_admin_override';
+const PROFILE_SELECT_ACCEPTANCE_FIELDS = 'job_acceptance_admin_override';
 const PROFILE_SELECT_IDENTITY_FIELDS = 'discourse_username, ifc_link_status, ifc_link_code, ifc_link_verified_at, ifc_link_last_checked_at, ifc_link_last_error';
 const PROFILE_SELECT_SIMBRIEF_TRACKING_FIELDS = 'simbrief_tracking_admin_enabled';
-const PROFILE_SELECT_ALL_FIELDS = `${PROFILE_SELECT_BASE_FIELDS}, ${PROFILE_SELECT_REFRESH_FIELDS}, ${PROFILE_SELECT_IDENTITY_FIELDS}, ${PROFILE_SELECT_SIMBRIEF_TRACKING_FIELDS}`;
+const PROFILE_SELECT_ALL_FIELDS = `${PROFILE_SELECT_BASE_FIELDS}, ${PROFILE_SELECT_REFRESH_FIELDS}, ${PROFILE_SELECT_ACCEPTANCE_FIELDS}, ${PROFILE_SELECT_IDENTITY_FIELDS}, ${PROFILE_SELECT_SIMBRIEF_TRACKING_FIELDS}`;
 const SUPPORTED_BASE_AIRPORTS = [
   'WSSS', 'WIII', 'VTBS', 'WMKK', 'RJTT', 'RJAA', 'VHHH', 'ZBAA', 'YSSY', 'YMML', 'YBBN', 'YPPH', 'YPAD',
   'NZAA', 'EGLL', 'EGKK', 'LFPG', 'EHAM', 'OMDB', 'OTHH', 'OJED', 'OERK', 'OMAA', 'LTBA', 'EDDF', 'LFPO',
@@ -258,6 +259,13 @@ function isMissingSimBriefTrackingColumnError(error) {
   return /simbrief_tracking_admin_enabled/i.test(message);
 }
 
+function isMissingJobAcceptanceOverrideColumnError(error) {
+  const code = String(error?.code || '').trim();
+  if (code === '42703' || code === 'PGRST204') return true;
+  const message = String(error?.message || '');
+  return /job_acceptance_admin_override/i.test(message);
+}
+
 function withRefreshDefaults(profile) {
   const rawRefreshCount = Number(profile?.job_refreshes_used);
   return {
@@ -289,22 +297,32 @@ function withSimBriefTrackingDefaults(profile) {
   };
 }
 
+function withAcceptanceOverrideDefaults(profile) {
+  return {
+    ...profile,
+    job_acceptance_admin_override: Boolean(profile?.job_acceptance_admin_override)
+  };
+}
+
 async function runProfileSelectWithFallback(buildQuery) {
   let result = await buildQuery(PROFILE_SELECT_ALL_FIELDS);
+  if (result.error && isMissingJobAcceptanceOverrideColumnError(result.error)) {
+    result = await buildQuery(`${PROFILE_SELECT_BASE_FIELDS}, ${PROFILE_SELECT_REFRESH_FIELDS}, ${PROFILE_SELECT_IDENTITY_FIELDS}, ${PROFILE_SELECT_SIMBRIEF_TRACKING_FIELDS}`);
+  }
   if (result.error && isMissingSimBriefTrackingColumnError(result.error)) {
-    result = await buildQuery(`${PROFILE_SELECT_BASE_FIELDS}, ${PROFILE_SELECT_REFRESH_FIELDS}, ${PROFILE_SELECT_IDENTITY_FIELDS}`);
+    result = await buildQuery(`${PROFILE_SELECT_BASE_FIELDS}, ${PROFILE_SELECT_REFRESH_FIELDS}, ${PROFILE_SELECT_ACCEPTANCE_FIELDS}, ${PROFILE_SELECT_IDENTITY_FIELDS}`);
   }
   if (result.error && isMissingJobRefreshColumnError(result.error)) {
-    result = await buildQuery(`${PROFILE_SELECT_BASE_FIELDS}, ${PROFILE_SELECT_IDENTITY_FIELDS}`);
+    result = await buildQuery(`${PROFILE_SELECT_BASE_FIELDS}, ${PROFILE_SELECT_ACCEPTANCE_FIELDS}, ${PROFILE_SELECT_IDENTITY_FIELDS}`);
   }
   if (result.error && isMissingIdentityColumnError(result.error)) {
-    result = await buildQuery(`${PROFILE_SELECT_BASE_FIELDS}, ${PROFILE_SELECT_REFRESH_FIELDS}`);
+    result = await buildQuery(`${PROFILE_SELECT_BASE_FIELDS}, ${PROFILE_SELECT_REFRESH_FIELDS}, ${PROFILE_SELECT_ACCEPTANCE_FIELDS}`);
   }
   if (result.error && isMissingJobRefreshColumnError(result.error)) {
     result = await buildQuery(PROFILE_SELECT_BASE_FIELDS);
   }
   if (!result.error) {
-    result.data = (result.data || []).map((profile) => withSimBriefTrackingDefaults(withIdentityDefaults(withRefreshDefaults(profile))));
+    result.data = (result.data || []).map((profile) => withAcceptanceOverrideDefaults(withSimBriefTrackingDefaults(withIdentityDefaults(withRefreshDefaults(profile)))));
   }
   return result;
 }
@@ -358,6 +376,10 @@ function profileCard(profile) {
     <label class="checkbox-row" for="refreshOverride_${profile.id}">
       <input id="refreshOverride_${profile.id}" type="checkbox" ${profile.job_refresh_admin_override ? 'checked' : ''}>
       Admin override refresh limit
+    </label>
+    <label class="checkbox-row" for="acceptanceOverride_${profile.id}">
+      <input id="acceptanceOverride_${profile.id}" type="checkbox" ${profile.job_acceptance_admin_override ? 'checked' : ''}>
+      Force 100% job acceptance chance
     </label>
     <label class="checkbox-row" for="simbriefTrackingOverride_${profile.id}">
       <input id="simbriefTrackingOverride_${profile.id}" type="checkbox" ${profile.simbrief_tracking_admin_enabled ? 'checked' : ''}>
@@ -462,6 +484,7 @@ async function saveProfile(profileId) {
     job_refreshes_used: Math.max(0, Number(document.getElementById(`refreshes_${profileId}`).value || 0)),
     job_refresh_window_started_at: (document.getElementById(`refreshWindow_${profileId}`).value || '').trim() || null,
     job_refresh_admin_override: Boolean(document.getElementById(`refreshOverride_${profileId}`).checked),
+    job_acceptance_admin_override: Boolean(document.getElementById(`acceptanceOverride_${profileId}`).checked),
     simbrief_tracking_admin_enabled: Boolean(document.getElementById(`simbriefTrackingOverride_${profileId}`).checked),
     discourse_username: (document.getElementById(`discourseUsername_${profileId}`).value || '').trim(),
     ifc_link_status: (document.getElementById(`ifcStatus_${profileId}`).value || 'unlinked').trim(),
@@ -501,6 +524,14 @@ async function saveProfile(profileId) {
 
   if (error && isMissingSimBriefTrackingColumnError(error)) {
     delete updates.simbrief_tracking_admin_enabled;
+    ({ error } = await supabaseClient
+      .from('profiles')
+      .update(updates)
+      .eq('id', profileId));
+  }
+
+  if (error && isMissingJobAcceptanceOverrideColumnError(error)) {
+    delete updates.job_acceptance_admin_override;
     ({ error } = await supabaseClient
       .from('profiles')
       .update(updates)
