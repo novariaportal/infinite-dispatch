@@ -749,9 +749,7 @@ async function saveSelectedProfile() {
 
 function openCabinCueAdmin() {
   let bypassToken = '';
-  if (window.crypto?.randomUUID) {
-    bypassToken = window.crypto.randomUUID();
-  } else if (window.crypto?.getRandomValues) {
+  if (window.crypto?.getRandomValues) {
     const bytes = new Uint8Array(16);
     window.crypto.getRandomValues(bytes);
     bypassToken = Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('');
