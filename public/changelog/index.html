@@ -37,6 +37,7 @@
     <div class="card">
       <h2>2026-05-21</h2>
       <ul>
+        <li>Hardened auth startup by lazily initializing the Supabase client and surfacing a clear “refresh and try again” message when the SDK is unavailable, so Login/Register buttons no longer fail silently.</li>
         <li>Added a safe home-page auth fallback so the blue <strong>Login / Sign-Up</strong> button still opens the auth panel if app module initialization is interrupted.</li>
         <li>Fixed auth button wiring by moving login/register/reset/recovery actions to JS event listeners so login controls respond reliably.</li>
         <li>Split CabinCue admin into a dedicated page at <code>/cabincueadmin/</code> and kept <code>/admin.html</code> focused on user account admin tools.</li>

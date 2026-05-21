@@ -15,7 +15,15 @@ if (!supabaseUrl || !supabasePublishableKey || supabaseUrl.includes('YOUR_SUPABA
   console.warn('Supabase config missing. Update public/config.js.');
 }
 
-const supabaseClient = window.supabase.createClient(supabaseUrl, supabasePublishableKey);
+let supabaseClient = null;
+
+function getSupabaseClient() {
+  if (supabaseClient) return supabaseClient;
+  const createClient = window.supabase?.createClient;
+  if (typeof createClient !== 'function') return null;
+  supabaseClient = createClient(supabaseUrl, supabasePublishableKey);
+  return supabaseClient;
+}
 
 const THEME_KEY = 'infinite_dispatch_theme';
 const GLASS_KEY = 'infinite_dispatch_glass';
@@ -1305,8 +1313,9 @@ async function handleRecoveryRedirectIfPresent() {
   if (params.type !== 'recovery') return false;
 
   showSection('recoverySection');
+  const client = getSupabaseClient();
   try {
-    const { data } = await supabaseClient.auth.getUser();
+    const { data } = client ? await client.auth.getUser() : { data: null };
     document.getElementById('userInfo').innerText = data?.user?.email
       ? `Password reset for: ${data.user.email}`
       : 'Password reset';
@@ -1331,19 +1340,24 @@ async function completePasswordRecovery() {
   }
 
   try {
-    const sessionRes = await supabaseClient.auth.getSession();
+    const client = getSupabaseClient();
+    if (!client) {
+      alert('Authentication service unavailable. Please refresh and try again.');
+      return;
+    }
+    const sessionRes = await client.auth.getSession();
     if (!sessionRes?.data?.session) {
       alert('Reset session not found. Please reopen your reset link.');
       return;
     }
 
-    const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
+    const { error } = await client.auth.updateUser({ password: newPassword });
     if (error) {
       alert(error.message);
       return;
     }
 
-    await supabaseClient.auth.signOut();
+    await client.auth.signOut();
     history.replaceState(null, '', window.location.pathname);
     alert('Password updated. Please log in with your new password.');
     showSection('authSection');
@@ -1623,9 +1637,14 @@ async function login() {
   if (!validation.ok) return alert(validation.errors.join('\n'));
 
   try {
+    const client = getSupabaseClient();
+    if (!client) {
+      alert('Authentication service unavailable. Please refresh and try again.');
+      return;
+    }
     setAuthButtonLoading('loginBtn', true, 'Logging in...', 'Login');
 
-    const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+    const { data, error } = await client.auth.signInWithPassword({ email, password });
     if (error) return alert(error.message);
 
     if (data?.user) {
@@ -1651,8 +1670,13 @@ async function registerAccount() {
   if (!validation.ok) return alert(validation.errors.join('\n'));
 
   try {
+    const client = getSupabaseClient();
+    if (!client) {
+      alert('Authentication service unavailable. Please refresh and try again.');
+      return;
+    }
     setAuthButtonLoading('registerBtn', true, 'Registering...', 'Register');
-    const signUpResult = await supabaseClient.auth.signUp({ email, password });
+    const signUpResult = await client.auth.signUp({ email, password });
     if (signUpResult.error) return alert(signUpResult.error.message);
 
     const user = signUpResult.data.user;
@@ -1662,7 +1686,7 @@ async function registerAccount() {
     }
 
     await createProfile(user, validation.normalized.baseAirport);
-    const loginResult = await supabaseClient.auth.signInWithPassword({ email, password });
+    const loginResult = await client.auth.signInWithPassword({ email, password });
     if (loginResult.error) {
       alert(loginResult.error.message);
       return;
@@ -1681,7 +1705,8 @@ async function registerAccount() {
 }
 
 async function logout() {
-  await supabaseClient.auth.signOut();
+  const client = getSupabaseClient();
+  if (client) await client.auth.signOut();
   currentUser = null;
   currentProfile = null;
   latestGeneratedDispatch = null;
@@ -1719,9 +1744,14 @@ function toggleReset() {
 async function resetPassword() {
   const email = document.getElementById('resetEmail').value;
   if (!email) return alert('Enter your email');
+  const client = getSupabaseClient();
+  if (!client) {
+    alert('Authentication service unavailable. Please refresh and try again.');
+    return;
+  }
 
   const redirectTo = window.location.origin;
-  const { error } = await supabaseClient.auth.resetPasswordForEmail(email, { redirectTo });
+  const { error } = await client.auth.resetPasswordForEmail(email, { redirectTo });
   if (error) return alert(error.message);
   alert('Password reset email sent. Open the email link to set a new password.');
 }
@@ -3083,7 +3113,9 @@ async function initializeDashboard() {
 }
 
 async function tryAutoLogin() {
-  const { data } = await supabaseClient.auth.getSession();
+  const client = getSupabaseClient();
+  if (!client) return;
+  const { data } = await client.auth.getSession();
   if (!data?.session?.user) return;
 
   currentUser = data.session.user;
