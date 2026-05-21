@@ -362,6 +362,18 @@
   </nav>
   <div id="toastContainer" class="toast-container" aria-live="polite" aria-atomic="true"></div>
 
+  <script>
+    window.openAuth = window.openAuth || function openAuthFallback() {
+      const landing = document.getElementById('landingSection');
+      const auth = document.getElementById('authSection');
+      const reset = document.getElementById('resetSection');
+      const recovery = document.getElementById('recoverySection');
+      if (landing) landing.style.display = 'none';
+      if (reset) reset.style.display = 'none';
+      if (recovery) recovery.style.display = 'none';
+      if (auth) auth.style.display = 'block';
+    };
+  </script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
   <script src="config.js" defer></script>
   <script type="module" src="app.js"></script>
