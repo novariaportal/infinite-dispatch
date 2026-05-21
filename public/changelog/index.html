@@ -37,6 +37,8 @@
     <div class="card">
       <h2>2026-05-21</h2>
       <ul>
+        <li>Simplified CabinCue admin workflow with an edit/create profile mode, direct announcement editing (rename/add), and per-announcement upload actions without visible version-history controls.</li>
+        <li>Added CabinCue admin password protection using <code>ifdispatchadmin</code>, plus a one-time bypass when opening CabinCue admin from <code>/admin.html</code>.</li>
         <li>Fixed a module export mismatch by re-exporting <code>runWizardStep</code> from <code>ui-helpers.js</code>, which restores app bootstrap and resolves the affected login button flow.</li>
         <li>Hardened auth startup by lazily initializing the Supabase client and surfacing a clear “refresh and try again” message when the SDK is unavailable, so Login/Register buttons no longer fail silently.</li>
         <li>Added a safe home-page auth fallback so the blue <strong>Login / Sign-Up</strong> button still opens the auth panel if app module initialization is interrupted.</li>

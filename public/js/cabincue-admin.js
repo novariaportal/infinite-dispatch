@@ -15,6 +15,7 @@
     profiles: [],
     versions: [],
     releaseHistory: [],
+    profileWorkflowMode: 'edit',
     selectedProfileId: '',
     selectedVersionId: '',
     selectedVersion: null,
@@ -73,6 +74,36 @@
     if (state.selectedProfileId) select.value = state.selectedProfileId;
   }
 
+  function switchCabinCueWorkflowMode(modeValue) {
+    const mode = modeValue || (byId('cabincueWorkflowMode')?.value === 'create' ? 'create' : 'edit');
+    state.profileWorkflowMode = mode;
+    const existingGroup = byId('cabincueExistingProfileGroup');
+    const createGroup = byId('cabincueCreateProfileGroup');
+    if (existingGroup) existingGroup.style.display = mode === 'edit' ? '' : 'none';
+    if (createGroup) createGroup.style.display = mode === 'create' ? '' : 'none';
+    if (mode === 'edit') {
+      if (state.selectedProfileId) {
+        loadCabinCueVersions(state.selectedProfileId);
+      } else if (state.profiles[0]?.id) {
+        state.selectedProfileId = state.profiles[0].id;
+        renderProfileOptions();
+        loadCabinCueVersions(state.selectedProfileId);
+      } else {
+        state.selectedVersion = null;
+        state.selectedVersionId = '';
+        state.items = [];
+        renderEditor();
+      }
+      setStatus('Editing existing profile.');
+      return;
+    }
+    state.selectedVersion = null;
+    state.selectedVersionId = '';
+    state.items = [];
+    renderEditor();
+    setStatus('Create a new profile from Generic.');
+  }
+
   function renderVersionOptions() {
     const select = byId('cabincueVersionSelect');
     if (!select) return;
@@ -118,8 +149,8 @@
     return state.profiles.find((profile) => profile.id === profileId) || null;
   }
 
-  function isDraftSelected() {
-    return state.selectedVersion?.status === 'draft';
+  function hasSelectedVersion() {
+    return Boolean(state.selectedVersion);
   }
 
   function uploadAcceptForCategory(category) {
@@ -136,19 +167,16 @@
       return;
     }
 
-    const readOnly = !isDraftSelected();
+    const readOnly = !hasSelectedVersion();
     const profile = getProfileById(state.selectedProfileId);
     const profileLabel = profile ? `${profile.display_name} (${profile.slug})` : 'Unknown profile';
 
     const editorHeader = `
       <div class="list-item">
-        <div class="list-row"><strong>${escapeHtml(profileLabel)} • v${escapeHtml(state.selectedVersion.version_number)}</strong><span>${escapeHtml(state.selectedVersion.status)}</span></div>
-        <div class="muted">Only draft versions are editable. Released versions are read-only.</div>
+        <div class="list-row"><strong>${escapeHtml(profileLabel)}</strong><span>v${escapeHtml(state.selectedVersion.version_number)}</span></div>
+        <div class="muted">Upload media, add announcements, and rename titles directly for this profile.</div>
         <div class="input-group">
-          <input id="cabincueVersionLabel" type="text" placeholder="Version label" value="${escapeHtml(state.selectedVersion.version_label || '')}" ${readOnly ? 'disabled' : ''}>
-          <input id="cabincueVersionNotes" type="text" placeholder="Draft notes" value="${escapeHtml(state.selectedVersion.notes || '')}" ${readOnly ? 'disabled' : ''}>
-          <button onclick="saveCabinCueDraftMetadata()" ${readOnly ? 'disabled' : ''}>Save Draft Metadata</button>
-          <button onclick="addCabinCueAnnouncementItem()" ${readOnly ? 'disabled' : ''}>Add Announcement Item</button>
+          <button onclick="addCabinCueAnnouncementItem()" ${readOnly ? 'disabled' : ''}>Add Announcement</button>
         </div>
       </div>
     `;
@@ -194,7 +222,7 @@
       })
       .join('');
 
-    container.innerHTML = `${editorHeader}${itemCards}<div class="list-item"><button onclick="saveCabinCueDraftItems()" ${readOnly ? 'disabled' : ''}>Save Draft Items</button></div>`;
+    container.innerHTML = `${editorHeader}${itemCards}<div class="list-item"><button onclick="saveCabinCueDraftItems()" ${readOnly ? 'disabled' : ''}>Save Announcements</button></div>`;
   }
 
   async function loadCabinCueProfiles() {
@@ -221,7 +249,7 @@
     }
     renderProfileOptions();
 
-    if (state.selectedProfileId) {
+    if (state.profileWorkflowMode === 'edit' && state.selectedProfileId) {
       await loadCabinCueVersions(state.selectedProfileId);
     } else {
       state.versions = [];
@@ -231,13 +259,13 @@
       renderVersionOptions();
       renderEditor();
       renderReleaseHistory();
-      setStatus('No CabinCue profiles found.');
+      setStatus(state.profiles.length ? 'Create a new profile from Generic.' : 'No CabinCue profiles found.');
     }
   }
 
   async function loadCabinCueVersions(profileId) {
     const client = getClient();
-    setStatus('Loading CabinCue versions...');
+    setStatus('Loading profile announcements...');
 
     const [{ data: versions, error: versionError }, { data: releaseRows, error: releaseError }] = await Promise.all([
       client
@@ -264,6 +292,38 @@
     state.versions = versions || [];
     state.releaseHistory = releaseRows || [];
     const activeVersionId = getProfileById(profileId)?.active_public_version_id || '';
+    if (!state.versions.length) {
+      const { data: createdVersion, error: createError } = await client
+        .from('cabincue_profile_versions')
+        .insert({
+          profile_id: profileId,
+          version_number: 1,
+          // Keep first version immediately usable in CabinCue playback.
+          status: 'released',
+          version_label: 'v1',
+          notes: 'Initial CabinCue profile version.'
+        })
+        .select('id, profile_id, version_number, status, version_label, notes, released_at, created_at')
+        .single();
+      if (createError) {
+        setStatus(`Failed to create profile version: ${createError.message}`, true);
+        return;
+      }
+
+      const { error: activateError } = await client
+        .from('cabincue_profiles')
+        .update({ active_public_version_id: createdVersion.id, updated_at: new Date().toISOString() })
+        .eq('id', profileId);
+      if (activateError) {
+        setStatus(`Version created but failed to activate it: ${activateError.message}`, true);
+        return;
+      }
+
+      state.versions = [createdVersion];
+      const profile = getProfileById(profileId);
+      if (profile) profile.active_public_version_id = createdVersion.id;
+    }
+
     if (!state.selectedVersionId || !state.versions.some((version) => version.id === state.selectedVersionId)) {
       state.selectedVersionId = activeVersionId && state.versions.some((version) => version.id === activeVersionId)
         ? activeVersionId
@@ -303,6 +363,7 @@
   }
 
   function selectCabinCueProfile() {
+    if (state.profileWorkflowMode !== 'edit') return;
     const profileId = byId('cabincueProfileSelect')?.value || '';
     state.selectedProfileId = profileId;
     state.selectedVersionId = '';
@@ -377,7 +438,7 @@
   }
 
   async function saveCabinCueDraftMetadata() {
-    if (!isDraftSelected()) {
+    if (!hasSelectedVersion()) {
       setStatus('Select a draft version to edit metadata.', true);
       return;
     }
@@ -401,8 +462,8 @@
   }
 
   async function saveCabinCueDraftItems() {
-    if (!isDraftSelected()) {
-      setStatus('Select a draft version to save items.', true);
+    if (!hasSelectedVersion()) {
+      setStatus('Select a profile version to save items.', true);
       return;
     }
 
@@ -410,7 +471,7 @@
     try {
       rows = collectDraftItemsFromDom();
     } catch (error) {
-      setStatus(error.message || 'Invalid draft item values.', true);
+      setStatus(error.message || 'Invalid announcement values.', true);
       return;
     }
 
@@ -436,17 +497,17 @@
       .upsert(rows, { onConflict: 'id' });
 
     if (error) {
-      setStatus(`Failed saving draft items: ${error.message}`, true);
+      setStatus(`Failed saving announcements: ${error.message}`, true);
       return;
     }
 
-    setStatus('Draft items saved.');
+    setStatus('Announcements saved.');
     await loadCabinCueItems(state.selectedVersionId);
   }
 
   function addCabinCueAnnouncementItem() {
-    if (!isDraftSelected()) {
-      setStatus('Only draft versions can add items.', true);
+    if (!hasSelectedVersion()) {
+      setStatus('Select a profile version before adding announcements.', true);
       return;
     }
     const firstCategory = CATEGORY_OPTIONS[0].value;
@@ -464,17 +525,17 @@
       is_active: true
     });
     renderEditor();
-    setStatus('Added new announcement row. Save draft items to persist.');
+    setStatus('Added new announcement row. Save announcements to persist.');
   }
 
   function removeCabinCueItem(itemId) {
-    if (!isDraftSelected()) {
-      setStatus('Only draft versions can remove items.', true);
+    if (!hasSelectedVersion()) {
+      setStatus('Select a profile version before removing announcements.', true);
       return;
     }
     state.items = state.items.filter((item) => item.id !== itemId);
     renderEditor();
-    setStatus('Item removed locally. Save draft items to persist.');
+    setStatus('Item removed locally. Save announcements to persist.');
   }
 
   function refreshCabinCueItemMediaHint(itemId) {
@@ -497,8 +558,8 @@
   }
 
   async function uploadCabinCueAsset(itemId) {
-    if (!isDraftSelected()) {
-      setStatus('Only draft versions can upload assets.', true);
+    if (!hasSelectedVersion()) {
+      setStatus('Select a profile version before uploading assets.', true);
       return;
     }
 
@@ -508,7 +569,7 @@
     const item = state.items.find((row) => row.id === itemId);
     const card = document.querySelector(`[data-cabincue-item-id="${itemId}"]`);
     if (!profile || !version || !item || !card) {
-      setStatus('Select a valid draft item before upload.', true);
+      setStatus('Select a valid announcement item before upload.', true);
       return;
     }
 
@@ -655,6 +716,7 @@
     const { error: versionError } = await client
       .from('cabincue_profile_versions')
       .update({
+        // Keep first version immediately usable in CabinCue playback.
         status: 'released',
         released_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -784,20 +846,29 @@
       return;
     }
 
-    const { data: draftVersion, error: versionError } = await client
+    const { data: liveVersion, error: versionError } = await client
       .from('cabincue_profile_versions')
       .insert({
         profile_id: createdProfile.id,
         version_number: 1,
-        status: 'draft',
+        status: 'released',
         version_label: 'v1',
         notes: 'Created from Generic template.'
       })
-      .select('id, profile_id, version_number')
+      .select('id, profile_id, version_number, status')
       .single();
 
     if (versionError) {
-      setStatus(`Profile created but draft version failed: ${versionError.message}`, true);
+      setStatus(`Profile created but version setup failed: ${versionError.message}`, true);
+      return;
+    }
+
+    const { error: activateError } = await client
+      .from('cabincue_profiles')
+      .update({ active_public_version_id: liveVersion.id, updated_at: new Date().toISOString() })
+      .eq('id', createdProfile.id);
+    if (activateError) {
+      setStatus(`Profile created but activation failed: ${activateError.message}`, true);
       return;
     }
 
@@ -815,7 +886,7 @@
       if (itemsError) {
         setStatus(`Profile created, but template copy failed: ${itemsError.message}`, true);
       } else if ((genericItems || []).length) {
-        const clonePayload = genericItems.map((item) => ({ ...item, version_id: draftVersion.id }));
+        const clonePayload = genericItems.map((item) => ({ ...item, version_id: liveVersion.id }));
         const { error: cloneError } = await client
           .from('cabincue_announcement_items')
           .insert(clonePayload);
@@ -826,8 +897,12 @@
     }
 
     byId('cabincueNewProfileName').value = '';
+    state.profileWorkflowMode = 'edit';
     state.selectedProfileId = createdProfile.id;
-    state.selectedVersionId = draftVersion.id;
+    state.selectedVersionId = liveVersion.id;
+    const modeSelect = byId('cabincueWorkflowMode');
+    if (modeSelect) modeSelect.value = 'edit';
+    switchCabinCueWorkflowMode('edit');
     setStatus(`Created profile ${displayName} from Generic template.`);
     await loadCabinCueProfiles();
   }
@@ -837,11 +912,13 @@
       setStatus('CabinCue unavailable: missing Supabase client.', true);
       return;
     }
+    switchCabinCueWorkflowMode();
     await loadCabinCueProfiles();
   }
 
   window.initCabinCueAdmin = initCabinCueAdmin;
   window.loadCabinCueProfiles = loadCabinCueProfiles;
+  window.switchCabinCueWorkflowMode = switchCabinCueWorkflowMode;
   window.selectCabinCueProfile = selectCabinCueProfile;
   window.selectCabinCueVersion = selectCabinCueVersion;
   window.saveCabinCueDraftMetadata = saveCabinCueDraftMetadata;
