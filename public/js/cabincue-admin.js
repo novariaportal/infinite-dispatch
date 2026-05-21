@@ -74,8 +74,8 @@
     if (state.selectedProfileId) select.value = state.selectedProfileId;
   }
 
-  function switchCabinCueWorkflowMode() {
-    const mode = byId('cabincueWorkflowMode')?.value === 'create' ? 'create' : 'edit';
+  function switchCabinCueWorkflowMode(modeValue) {
+    const mode = modeValue || (byId('cabincueWorkflowMode')?.value === 'create' ? 'create' : 'edit');
     state.workflowMode = mode;
     const existingGroup = byId('cabincueExistingProfileGroup');
     const createGroup = byId('cabincueCreateProfileGroup');
@@ -900,7 +900,7 @@
     state.selectedVersionId = liveVersion.id;
     const modeSelect = byId('cabincueWorkflowMode');
     if (modeSelect) modeSelect.value = 'edit';
-    switchCabinCueWorkflowMode();
+    switchCabinCueWorkflowMode('edit');
     setStatus(`Created profile ${displayName} from Generic template.`);
     await loadCabinCueProfiles();
   }

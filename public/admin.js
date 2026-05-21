@@ -748,7 +748,20 @@ async function saveSelectedProfile() {
 }
 
 function openCabinCueAdmin() {
-  const bypassToken = `${Date.now()}-${(window.crypto?.randomUUID?.() || Math.random().toString(36).slice(2))}`;
+  let bypassToken = '';
+  if (window.crypto?.randomUUID) {
+    bypassToken = window.crypto.randomUUID();
+  } else if (window.crypto?.getRandomValues) {
+    const bytes = new Uint8Array(16);
+    window.crypto.getRandomValues(bytes);
+    bypassToken = Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('');
+  }
+
+  if (!bypassToken) {
+    window.location.href = '/cabincueadmin/';
+    return;
+  }
+
   try {
     window.sessionStorage.setItem(CABINCUE_ADMIN_BYPASS_KEY, '1');
     window.sessionStorage.setItem(CABINCUE_ADMIN_BYPASS_TOKEN_KEY, bypassToken);
