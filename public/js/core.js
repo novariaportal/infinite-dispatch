@@ -1241,6 +1241,65 @@ function openAuth() {
   showSection('authSection');
 }
 
+function bindAuthControls() {
+  const loginBtn = document.getElementById('loginBtn');
+  if (loginBtn && !loginBtn.dataset.boundClick) {
+    loginBtn.dataset.boundClick = '1';
+    loginBtn.addEventListener('click', () => {
+      login();
+    });
+  }
+
+  const registerBtn = document.getElementById('registerBtn');
+  if (registerBtn && !registerBtn.dataset.boundClick) {
+    registerBtn.dataset.boundClick = '1';
+    registerBtn.addEventListener('click', () => {
+      registerAccount();
+    });
+  }
+
+  const resetPasswordBtn = document.getElementById('resetPasswordBtn');
+  if (resetPasswordBtn && !resetPasswordBtn.dataset.boundClick) {
+    resetPasswordBtn.dataset.boundClick = '1';
+    resetPasswordBtn.addEventListener('click', () => {
+      resetPassword();
+    });
+  }
+
+  const cancelResetBtn = document.getElementById('cancelResetBtn');
+  if (cancelResetBtn && !cancelResetBtn.dataset.boundClick) {
+    cancelResetBtn.dataset.boundClick = '1';
+    cancelResetBtn.addEventListener('click', () => {
+      toggleReset();
+    });
+  }
+
+  const completeRecoveryBtn = document.getElementById('completeRecoveryBtn');
+  if (completeRecoveryBtn && !completeRecoveryBtn.dataset.boundClick) {
+    completeRecoveryBtn.dataset.boundClick = '1';
+    completeRecoveryBtn.addEventListener('click', () => {
+      completePasswordRecovery();
+    });
+  }
+
+  const toggleResetLink = document.getElementById('toggleResetLink');
+  if (toggleResetLink && !toggleResetLink.dataset.boundClick) {
+    toggleResetLink.dataset.boundClick = '1';
+    toggleResetLink.addEventListener('click', (event) => {
+      event.preventDefault();
+      toggleReset();
+    });
+  }
+
+  const loginPassword = document.getElementById('loginPassword');
+  if (loginPassword && !loginPassword.dataset.boundEnter) {
+    loginPassword.dataset.boundEnter = '1';
+    loginPassword.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') login();
+    });
+  }
+}
+
 async function handleRecoveryRedirectIfPresent() {
   const params = getHashParams();
   if (params.type !== 'recovery') return false;
@@ -3034,6 +3093,7 @@ async function tryAutoLogin() {
 }
 
 async function startApp() {
+  bindAuthControls();
   applyAppearanceFromStorage();
   restoreRecentActivity();
   renderRecentActivity();
