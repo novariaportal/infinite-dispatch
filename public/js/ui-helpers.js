@@ -6,6 +6,7 @@ export {
   showPage,
   previewLandingFlow,
   previewLandingFlowFromKey,
+  runWizardStep,
   quickActionRefreshJobs,
   quickActionContinueDispatch,
   quickActionStartTracking,
