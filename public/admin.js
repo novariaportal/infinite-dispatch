@@ -6,6 +6,7 @@ window.supabaseClient = supabaseClient;
 const ADMIN_PASSWORD = 'ifdispatchadmin';
 const ADMIN_MODE_KEY = 'infinite_dispatch_admin_password_mode';
 const CABINCUE_ADMIN_BYPASS_KEY = 'infinite_dispatch_cabincue_admin_bypass';
+const CABINCUE_ADMIN_BYPASS_TOKEN_KEY = 'infinite_dispatch_cabincue_admin_bypass_token';
 const LICENSE_OPTIONS = ['CPL', 'MPL', 'ATPL'];
 const VALID_LICENSE_SET = new Set(LICENSE_OPTIONS);
 const ICAO_REGEX = /^[A-Z]{4}$/;
@@ -747,12 +748,14 @@ async function saveSelectedProfile() {
 }
 
 function openCabinCueAdmin() {
+  const bypassToken = `${Date.now()}-${(window.crypto?.randomUUID?.() || Math.random().toString(36).slice(2))}`;
   try {
     window.sessionStorage.setItem(CABINCUE_ADMIN_BYPASS_KEY, '1');
+    window.sessionStorage.setItem(CABINCUE_ADMIN_BYPASS_TOKEN_KEY, bypassToken);
   } catch {
     // Ignore storage failures in restricted browser contexts.
   }
-  window.location.href = '/cabincueadmin/?source=admin';
+  window.location.href = `/cabincueadmin/?source=admin&token=${encodeURIComponent(bypassToken)}`;
 }
 
 window.unlockAdmin = unlockAdmin;

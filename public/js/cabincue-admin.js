@@ -149,7 +149,7 @@
     return state.profiles.find((profile) => profile.id === profileId) || null;
   }
 
-  function isDraftSelected() {
+  function hasSelectedVersion() {
     return Boolean(state.selectedVersion);
   }
 
@@ -167,7 +167,7 @@
       return;
     }
 
-    const readOnly = false;
+    const readOnly = !hasSelectedVersion();
     const profile = getProfileById(state.selectedProfileId);
     const profileLabel = profile ? `${profile.display_name} (${profile.slug})` : 'Unknown profile';
 
@@ -437,7 +437,7 @@
   }
 
   async function saveCabinCueDraftMetadata() {
-    if (!isDraftSelected()) {
+    if (!hasSelectedVersion()) {
       setStatus('Select a draft version to edit metadata.', true);
       return;
     }
@@ -461,7 +461,7 @@
   }
 
   async function saveCabinCueDraftItems() {
-    if (!isDraftSelected()) {
+    if (!hasSelectedVersion()) {
       setStatus('Select a profile version to save items.', true);
       return;
     }
@@ -505,7 +505,7 @@
   }
 
   function addCabinCueAnnouncementItem() {
-    if (!isDraftSelected()) {
+    if (!hasSelectedVersion()) {
       setStatus('Select a profile version before adding announcements.', true);
       return;
     }
@@ -528,7 +528,7 @@
   }
 
   function removeCabinCueItem(itemId) {
-    if (!isDraftSelected()) {
+    if (!hasSelectedVersion()) {
       setStatus('Select a profile version before removing announcements.', true);
       return;
     }
@@ -557,7 +557,7 @@
   }
 
   async function uploadCabinCueAsset(itemId) {
-    if (!isDraftSelected()) {
+    if (!hasSelectedVersion()) {
       setStatus('Select a profile version before uploading assets.', true);
       return;
     }
