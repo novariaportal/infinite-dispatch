@@ -456,9 +456,6 @@ async function unlockAdmin() {
     // Ignore storage failures in restricted browser contexts.
   }
   await loadProfiles();
-  if (typeof window.initCabinCueAdmin === 'function') {
-    await window.initCabinCueAdmin();
-  }
 }
 
 async function loadProfiles() {
