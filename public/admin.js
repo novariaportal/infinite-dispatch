@@ -1,6 +1,7 @@
 const supabaseUrl = window.SUPABASE_URL;
 const supabasePublishableKey = window.SUPABASE_PUBLISHABLE_KEY;
 const supabaseClient = window.supabase.createClient(supabaseUrl, supabasePublishableKey);
+window.supabaseClient = supabaseClient;
 
 const ADMIN_PASSWORD = 'ifdispatchadmin';
 const ADMIN_MODE_KEY = 'infinite_dispatch_admin_password_mode';
@@ -455,6 +456,9 @@ async function unlockAdmin() {
     // Ignore storage failures in restricted browser contexts.
   }
   await loadProfiles();
+  if (typeof window.initCabinCueAdmin === 'function') {
+    await window.initCabinCueAdmin();
+  }
 }
 
 async function loadProfiles() {
