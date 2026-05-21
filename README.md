@@ -174,6 +174,33 @@ alter table public.flight_tracking
   add constraint flight_tracking_server_type_valid check (server_type in ('casual', 'training', 'expert'));
 ```
 
+### CabinCue schema + storage (run migration)
+
+CabinCue uses versioned profile data with release history and media asset storage.
+
+Run the migration file:
+
+```bash
+supabase migration up
+```
+
+Or apply the SQL from:
+
+```text
+supabase/migrations/20260521020000_cabincue.sql
+```
+
+It creates:
+- `cabincue_profiles` (airline profile definitions + active public version pointer)
+- `cabincue_profile_versions` (draft vs released versions, release timestamp)
+- `cabincue_announcement_items` (category/media announcement items ordered per version)
+- `cabincue_release_records` (release and rollback history)
+- `cabincue-assets` storage bucket with MP3/MP4-only upload policies and size caps
+
+Seeded profiles:
+- Generic
+- Singapore Airlines
+
 3. In **Auth → Providers**, enable **Email**.
 
 ---

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="description" content="CabinCue provides airline-style boarding, safety, and arrival announcement playback profiles for Infinite Dispatch.">
+  <link rel="canonical" href="https://infinite-dispatch.vercel.app/cabincue/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="CabinCue | Infinite Dispatch">
+  <meta property="og:description" content="Play airline announcement profiles with category navigation and shareable links.">
+  <meta property="og:url" content="https://infinite-dispatch.vercel.app/cabincue/">
+  <meta property="og:image" content="https://infinite-dispatch.vercel.app/og-image.svg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="CabinCue | Infinite Dispatch">
+  <meta name="twitter:description" content="Public announcement playback profiles for boarding, departure prep, safety video, and landing.">
+  <meta name="twitter:image" content="https://infinite-dispatch.vercel.app/og-image.svg">
+  <title>CabinCue - Infinite Dispatch</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header>
+    <div>
+      <h1>✈️ Infinite Dispatch</h1>
+      <div>CabinCue</div>
+    </div>
+    <nav class="header-nav">
+      <a href="/">Back to App</a>
+      <a href="/user-guide/">User Guide</a>
+      <a href="/changelog/">Changelog</a>
+    </nav>
+  </header>
+
+  <main class="guide-container">
+    <h1>CabinCue Announcements</h1>
+    <p class="muted">Choose an airline profile, switch categories, and play announcements quickly on mobile, tablet, or split-screen.</p>
+
+    <div class="card">
+      <label for="cabincueProfileSelect"><strong>Airline Profile</strong></label>
+      <div class="input-group">
+        <select id="cabincueProfileSelect"></select>
+        <button id="cabincueCopyProfileLink">Copy Profile Link</button>
+      </div>
+      <p id="cabincueProfileStatus" class="muted">Loading profiles...</p>
+    </div>
+
+    <div class="card">
+      <h2>Categories</h2>
+      <div id="cabincueCategoryNav" class="quick-actions"></div>
+    </div>
+
+    <div class="card">
+      <h2>Now Playing</h2>
+      <p id="cabincueNowPlaying" class="muted">Select an announcement to begin playback.</p>
+      <div class="input-group">
+        <button id="cabincueTogglePlay">Play</button>
+        <button id="cabincueStop" class="danger">Stop</button>
+        <button id="cabincueCopyAnnouncementLink">Copy Announcement Link</button>
+      </div>
+      <audio id="cabincueAudioPlayer" controls preload="none" style="width:100%;margin-top:0.75rem;display:none;"></audio>
+      <video id="cabincueVideoPlayer" controls preload="none" style="width:100%;max-width:720px;margin-top:0.75rem;display:none;"></video>
+    </div>
+
+    <div class="card">
+      <h2>Announcements</h2>
+      <div id="cabincueAnnouncementList" class="list"></div>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/config.js"></script>
+  <script src="/js/cabincue.js"></script>
+</body>
+</html>
