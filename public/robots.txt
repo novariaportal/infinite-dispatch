@@ -1,6 +1,7 @@
 User-agent: *
 Allow: /
 Disallow: /admin.html
+Disallow: /cabincueadmin/
 Disallow: /if-tracking-debug-7f3a9c.html
 Disallow: /diag-7f3a9c
 

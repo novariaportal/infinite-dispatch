@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CabinCue Admin</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main>
+    <section id="cabincueAdminGate" class="card auth-card">
+      <h2>CabinCue Admin Access</h2>
+      <p class="muted">Admin password only.</p>
+      <input type="password" id="cabincueAdminPassword" placeholder="Admin password">
+      <button onclick="unlockCabinCueAdmin()">Unlock</button>
+    </section>
+
+    <section id="cabincueAdminPanel" style="display:none;">
+      <div class="card">
+        <h2>CabinCue (Development)</h2>
+        <p class="muted">Manage versioned airline announcement profiles, assets, and releases.</p>
+        <p id="cabincueAdminStatus" class="muted"></p>
+        <div class="input-group">
+          <select id="cabincueProfileSelect" onchange="selectCabinCueProfile()">
+            <option value="">Select CabinCue profile</option>
+          </select>
+          <button onclick="loadCabinCueProfiles()">Reload CabinCue Profiles</button>
+        </div>
+        <div class="input-group">
+          <input id="cabincueNewProfileName" type="text" placeholder="New profile display name (e.g., Emirates)">
+          <button onclick="createCabinCueProfileFromGeneric()">Create from Generic Template</button>
+        </div>
+        <div class="input-group">
+          <select id="cabincueVersionSelect" onchange="selectCabinCueVersion()">
+            <option value="">Select profile version</option>
+          </select>
+          <button onclick="createCabinCueDraftVersion()">Create Draft Version</button>
+          <button onclick="releaseCabinCueVersion()" class="success">Release Version</button>
+          <button onclick="rollbackCabinCueVersion()" class="warning">Rollback to Selected Release</button>
+        </div>
+        <div class="input-group">
+          <input id="cabincueReleaseNotes" type="text" placeholder="Release notes (optional)">
+        </div>
+        <p id="cabincueStatus" class="muted">CabinCue locked until admin access is unlocked.</p>
+        <div id="cabincueEditor" class="list"></div>
+        <h3>Release History</h3>
+        <div id="cabincueReleaseHistory" class="list"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/config.js"></script>
+  <script src="/js/cabincueadmin-page.js"></script>
+  <script src="/js/cabincue-admin.js"></script>
+</body>
+</html>
