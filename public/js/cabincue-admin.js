@@ -15,7 +15,7 @@
     profiles: [],
     versions: [],
     releaseHistory: [],
-    workflowMode: 'edit',
+    profileWorkflowMode: 'edit',
     selectedProfileId: '',
     selectedVersionId: '',
     selectedVersion: null,
@@ -76,7 +76,7 @@
 
   function switchCabinCueWorkflowMode(modeValue) {
     const mode = modeValue || (byId('cabincueWorkflowMode')?.value === 'create' ? 'create' : 'edit');
-    state.workflowMode = mode;
+    state.profileWorkflowMode = mode;
     const existingGroup = byId('cabincueExistingProfileGroup');
     const createGroup = byId('cabincueCreateProfileGroup');
     if (existingGroup) existingGroup.style.display = mode === 'edit' ? '' : 'none';
@@ -249,7 +249,7 @@
     }
     renderProfileOptions();
 
-    if (state.workflowMode === 'edit' && state.selectedProfileId) {
+    if (state.profileWorkflowMode === 'edit' && state.selectedProfileId) {
       await loadCabinCueVersions(state.selectedProfileId);
     } else {
       state.versions = [];
@@ -298,6 +298,7 @@
         .insert({
           profile_id: profileId,
           version_number: 1,
+          // Keep first version immediately usable in CabinCue playback.
           status: 'released',
           version_label: 'v1',
           notes: 'Initial CabinCue profile version.'
@@ -362,7 +363,7 @@
   }
 
   function selectCabinCueProfile() {
-    if (state.workflowMode !== 'edit') return;
+    if (state.profileWorkflowMode !== 'edit') return;
     const profileId = byId('cabincueProfileSelect')?.value || '';
     state.selectedProfileId = profileId;
     state.selectedVersionId = '';
@@ -715,6 +716,7 @@
     const { error: versionError } = await client
       .from('cabincue_profile_versions')
       .update({
+        // Keep first version immediately usable in CabinCue playback.
         status: 'released',
         released_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -895,7 +897,7 @@
     }
 
     byId('cabincueNewProfileName').value = '';
-    state.workflowMode = 'edit';
+    state.profileWorkflowMode = 'edit';
     state.selectedProfileId = createdProfile.id;
     state.selectedVersionId = liveVersion.id;
     const modeSelect = byId('cabincueWorkflowMode');
