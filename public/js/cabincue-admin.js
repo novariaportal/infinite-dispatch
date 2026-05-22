@@ -204,7 +204,7 @@
     return Array.isArray(entry?.mediaKinds) && entry.mediaKinds.length ? entry.mediaKinds : ['audio'];
   }
 
-  function announcementTypeForCategory(category, selectedMediaKind) {
+  function resolveMediaKind(category, selectedMediaKind) {
     const allowedKinds = getAllowedMediaKinds(category);
     return allowedKinds.includes(selectedMediaKind) ? selectedMediaKind : allowedKinds[0];
   }
@@ -223,7 +223,7 @@
 
   function buildMediaKindOptions(category, selectedMediaKind) {
     const allowedKinds = getAllowedMediaKinds(category);
-    const nextKind = announcementTypeForCategory(category, selectedMediaKind);
+    const nextKind = resolveMediaKind(category, selectedMediaKind);
     return allowedKinds
       .map((kind) => `<option value="${kind}" ${kind === nextKind ? 'selected' : ''}>${kind}</option>`)
       .join('');
@@ -272,7 +272,7 @@
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
       .map((item, index) => {
         const category = item.category || CATEGORY_OPTIONS[0].value;
-        const mediaKind = announcementTypeForCategory(category, item.media_kind);
+        const mediaKind = resolveMediaKind(category, item.media_kind);
         const previewHtml = item.asset_path
           ? mediaKind === 'video'
             ? `<video controls preload="none" style="width:100%;max-width:420px;" src="${escapeHtml(item.asset_path)}"></video>`
@@ -506,7 +506,7 @@
       const getField = (field) => card.querySelector(`[data-field="${field}"]`);
       const category = (getField('category')?.value || '').trim();
       const selectedMediaKind = (getField('media_kind')?.value || '').trim();
-      const mediaKind = announcementTypeForCategory(category, selectedMediaKind);
+      const mediaKind = resolveMediaKind(category, selectedMediaKind);
       const announcementKey = (getField('announcement_key')?.value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_');
       const title = (getField('title')?.value || '').trim();
       const description = (getField('description')?.value || '').trim() || null;
@@ -650,11 +650,10 @@
     if (!card) return;
     const category = card.querySelector('[data-field="category"]')?.value || CATEGORY_OPTIONS[0].value;
     const currentMediaKind = card.querySelector('[data-field="media_kind"]')?.value || 'audio';
-    const mediaKind = announcementTypeForCategory(category, currentMediaKind);
+    const mediaKind = resolveMediaKind(category, currentMediaKind);
     const mediaField = card.querySelector('[data-field="media_kind"]');
     if (mediaField) {
       mediaField.innerHTML = buildMediaKindOptions(category, mediaKind);
-      mediaField.value = mediaKind;
     }
 
     const fileInput = byId(`cabincueUpload_${itemId}`);
@@ -686,7 +685,7 @@
 
     const category = card.querySelector('[data-field="category"]')?.value || item.category;
     const selectedKind = card.querySelector('[data-field="media_kind"]')?.value || item.media_kind;
-    const expectedKind = announcementTypeForCategory(category, selectedKind);
+    const expectedKind = resolveMediaKind(category, selectedKind);
     const mediaConfig = MEDIA_KIND_CONFIG[expectedKind] || MEDIA_KIND_CONFIG.audio;
     const fileInput = byId(`cabincueUpload_${itemId}`);
     const file = fileInput?.files?.[0];
@@ -709,7 +708,7 @@
     if (file.type) {
       const normalizedMime = String(file.type).toLowerCase();
       if (!mediaConfig.mimes.includes(normalizedMime)) {
-        setStatus(`Invalid MIME type (${file.type}) for ${expectedExt.toUpperCase()} upload.`, true);
+        setStatus(`Invalid MIME type (${normalizedMime}) for ${expectedExt.toUpperCase()} upload.`, true);
         return;
       }
     }
