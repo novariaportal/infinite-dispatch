@@ -46,6 +46,19 @@
         <a class="header-btn link-btn" href="/user-guide/">User Guide</a>
         <a class="header-btn link-btn" href="/changelog/">Changelog</a>
         <a class="header-btn link-btn" href="/cabincue/">CabinCue</a>
+        <label for="headerLookSelect">Look</label>
+        <select id="headerLookSelect" onchange="onLookChangeFromHeader()">
+          <option value="classic">Classic</option>
+          <option value="2.0">2.0</option>
+        </select>
+        <div id="headerLookPresetGroup" class="look-control-group" style="display:none;">
+          <label for="headerLookPresetSelect">2.0 style</label>
+          <select id="headerLookPresetSelect" onchange="onLookPresetChangeFromHeader()">
+            <option value="aurora">Aurora</option>
+            <option value="flightdeck">Flight Deck</option>
+            <option value="sunset">Sunset</option>
+          </select>
+        </div>
         <label for="headerThemeSelect">Theme</label>
         <select id="headerThemeSelect" onchange="onThemeChangeFromHeader()">
           <option value="light">Light</option>
@@ -174,6 +187,21 @@
             </nav>
 
             <div class="sidebar-settings">
+              <label for="lookSelect">Look</label>
+              <select id="lookSelect" onchange="onLookChange()">
+                <option value="classic">Classic</option>
+                <option value="2.0">2.0</option>
+              </select>
+
+              <div id="lookPresetGroup" class="look-control-group" style="display:none;">
+                <label for="lookPresetSelect">2.0 style</label>
+                <select id="lookPresetSelect" onchange="onLookPresetChange()">
+                  <option value="aurora">Aurora</option>
+                  <option value="flightdeck">Flight Deck</option>
+                  <option value="sunset">Sunset</option>
+                </select>
+              </div>
+
               <label for="themeSelect">Theme</label>
               <select id="themeSelect" onchange="onThemeChange()">
                 <option value="light">Light</option>

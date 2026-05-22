@@ -53,6 +53,46 @@ body {
   color: var(--text);
 }
 
+body.look-2 {
+  background:
+    radial-gradient(1200px 520px at 4% -20%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 64%),
+    radial-gradient(900px 540px at 102% 8%, color-mix(in srgb, #9cc5ff 20%, transparent), transparent 62%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 90%, var(--bg)), var(--bg));
+}
+
+body.look-2 .topbar,
+body.look-2 .card,
+body.look-2 .sidebar,
+body.look-2 .stat-box,
+body.look-2 .list-item,
+body.look-2 pre {
+  border-radius: 20px;
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--border));
+  box-shadow:
+    0 16px 34px color-mix(in srgb, var(--accent) 12%, transparent),
+    var(--shadow);
+}
+
+body.look-2 .nav-btn,
+body.look-2 button,
+body.look-2 .link-btn,
+body.look-2 input,
+body.look-2 select {
+  border-radius: 14px;
+}
+
+body.look-2[data-look-preset='aurora'] {
+  --accent: #6d4dff;
+}
+
+body.look-2[data-look-preset='flightdeck'] {
+  --accent: #0c8de8;
+}
+
+body.look-2[data-look-preset='sunset'] {
+  --accent: #df6a26;
+}
+
 body.glass-mode {
   background:
     radial-gradient(1200px 520px at 10% -20%, color-mix(in srgb, var(--accent) 24%, transparent), transparent 60%),
@@ -285,6 +325,21 @@ body.glass-mode .link-btn:hover::after {
 .header-checkbox {
   margin-top: 0;
   font-size: 0.9rem;
+}
+
+.look-control-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.look-control-group label {
+  margin: 0;
+}
+
+.look-control-group select {
+  margin: 0;
+  width: auto;
 }
 
 .header-nav a,

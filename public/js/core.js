@@ -27,6 +27,8 @@ function getSupabaseClient() {
 
 const THEME_KEY = 'infinite_dispatch_theme';
 const GLASS_KEY = 'infinite_dispatch_glass';
+const LOOK_KEY = 'infinite_dispatch_look';
+const LOOK_PRESET_KEY = 'infinite_dispatch_look_preset';
 const SIDEBAR_COLLAPSED_KEY = 'infinite_dispatch_sidebar_collapsed';
 const LIVERY_CACHE_KEY = 'infinite_dispatch_livery_cache_v2';
 const RECENT_ACTIVITY_KEY = 'infinite_dispatch_recent_activity';
@@ -1190,9 +1192,13 @@ async function quickActionStartTracking() {
 function applyAppearanceFromStorage() {
   const savedTheme = localStorage.getItem(THEME_KEY) || 'light';
   const glassEnabled = localStorage.getItem(GLASS_KEY) === '1';
+  const savedLook = localStorage.getItem(LOOK_KEY) || 'classic';
+  const savedLookPreset = localStorage.getItem(LOOK_PRESET_KEY) || 'aurora';
 
   document.documentElement.setAttribute('data-theme', savedTheme);
   document.body.classList.toggle('glass-mode', glassEnabled);
+  setLook(savedLook, false);
+  setLookPreset(savedLookPreset, false);
 
   ['themeSelect', 'headerThemeSelect'].forEach((id) => {
     const el = document.getElementById(id);
@@ -1202,6 +1208,45 @@ function applyAppearanceFromStorage() {
   ['glassToggle', 'headerGlassToggle'].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.checked = glassEnabled;
+  });
+}
+
+function normalizeLook(value) {
+  return value === '2.0' ? '2.0' : 'classic';
+}
+
+function normalizeLookPreset(value) {
+  if (value === 'flightdeck') return 'flightdeck';
+  if (value === 'sunset') return 'sunset';
+  return 'aurora';
+}
+
+function setLook(value, persist = true) {
+  const lookValue = normalizeLook(value);
+  const isTwoLook = lookValue === '2.0';
+  document.body.classList.toggle('look-2', isTwoLook);
+
+  if (persist) localStorage.setItem(LOOK_KEY, lookValue);
+
+  ['lookSelect', 'headerLookSelect'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = lookValue;
+  });
+
+  ['lookPresetGroup', 'headerLookPresetGroup'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = isTwoLook ? '' : 'none';
+  });
+}
+
+function setLookPreset(value, persist = true) {
+  const presetValue = normalizeLookPreset(value);
+  document.body.setAttribute('data-look-preset', presetValue);
+  if (persist) localStorage.setItem(LOOK_PRESET_KEY, presetValue);
+
+  ['lookPresetSelect', 'headerLookPresetSelect'].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.value = presetValue;
   });
 }
 
@@ -1239,6 +1284,22 @@ function onGlassToggle() {
 
 function onGlassToggleFromHeader() {
   setGlassMode(!!document.getElementById('headerGlassToggle')?.checked);
+}
+
+function onLookChange() {
+  setLook(document.getElementById('lookSelect')?.value || 'classic');
+}
+
+function onLookChangeFromHeader() {
+  setLook(document.getElementById('headerLookSelect')?.value || 'classic');
+}
+
+function onLookPresetChange() {
+  setLookPreset(document.getElementById('lookPresetSelect')?.value || 'aurora');
+}
+
+function onLookPresetChangeFromHeader() {
+  setLookPreset(document.getElementById('headerLookPresetSelect')?.value || 'aurora');
 }
 
 function openAuth() {
@@ -3155,6 +3216,10 @@ export {
   onThemeChangeFromHeader,
   onGlassToggle,
   onGlassToggleFromHeader,
+  onLookChange,
+  onLookChangeFromHeader,
+  onLookPresetChange,
+  onLookPresetChangeFromHeader,
   showPage,
   previewLandingFlow,
   previewLandingFlowFromKey,
