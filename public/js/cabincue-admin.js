@@ -672,7 +672,8 @@
     const fileExt = (file.name.split('.').pop() || '').toLowerCase();
 
     if (fileExt !== expectedExt) {
-      setStatus(`Invalid file type for ${category}. Expected ${expectedExt.toUpperCase()}.`, true);
+      const categoryLabel = CATEGORY_LOOKUP.get(category)?.label || category;
+      setStatus(`Invalid file type for ${categoryLabel}. Expected ${expectedExt.toUpperCase()}.`, true);
       return;
     }
     if (file.size < 1 || file.size > maxBytes) {
