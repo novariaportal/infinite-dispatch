@@ -1,10 +1,10 @@
 (() => {
   const CATEGORY_OPTIONS = [
-    { value: 'boarding', label: 'boarding', mediaKind: 'audio' },
-    { value: 'departure-prep', label: 'departure-prep', mediaKind: 'audio' },
-    { value: 'safety-video', label: 'safety-video', mediaKind: 'video' },
-    { value: 'descent-landing', label: 'descent/landing', mediaKind: 'audio' },
-    { value: 'other-announcements', label: 'other announcements', mediaKind: 'video' }
+    { value: 'boarding', label: 'boarding', mediaKinds: ['audio'] },
+    { value: 'departure-prep', label: 'departure-prep', mediaKinds: ['audio'] },
+    { value: 'safety-video', label: 'safety-video', mediaKinds: ['video'] },
+    { value: 'descent-landing', label: 'descent/landing', mediaKinds: ['audio'] },
+    { value: 'other-announcements', label: 'other announcements', mediaKinds: ['audio', 'video'] }
   ];
 
   const CATEGORY_LOOKUP = new Map(CATEGORY_OPTIONS.map((entry) => [entry.value, entry]));
@@ -187,9 +187,14 @@
       .join('');
   }
 
-  function announcementTypeForCategory(category) {
+  function getAllowedMediaKinds(category) {
     const entry = CATEGORY_LOOKUP.get(category);
-    return entry?.mediaKind || 'audio';
+    return Array.isArray(entry?.mediaKinds) && entry.mediaKinds.length ? entry.mediaKinds : ['audio'];
+  }
+
+  function announcementTypeForCategory(category, selectedMediaKind) {
+    const allowedKinds = getAllowedMediaKinds(category);
+    return allowedKinds.includes(selectedMediaKind) ? selectedMediaKind : allowedKinds[0];
   }
 
   function getProfileById(profileId) {
@@ -200,9 +205,16 @@
     return Boolean(state.selectedVersion);
   }
 
-  function uploadAcceptForCategory(category) {
-    const kind = announcementTypeForCategory(category);
+  function uploadAcceptForMediaKind(kind) {
     return kind === 'video' ? '.mp4,video/mp4' : '.mp3,audio/mpeg';
+  }
+
+  function buildMediaKindOptions(category, selectedMediaKind) {
+    const allowedKinds = getAllowedMediaKinds(category);
+    const nextKind = announcementTypeForCategory(category, selectedMediaKind);
+    return allowedKinds
+      .map((kind) => `<option value="${kind}" ${kind === nextKind ? 'selected' : ''}>${kind}</option>`)
+      .join('');
   }
 
   function buildTemplateClonePayload(versionId, sourceItems = []) {
@@ -248,7 +260,7 @@
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
       .map((item, index) => {
         const category = item.category || CATEGORY_OPTIONS[0].value;
-        const mediaKind = announcementTypeForCategory(category);
+        const mediaKind = announcementTypeForCategory(category, item.media_kind);
         const previewHtml = item.asset_path
           ? mediaKind === 'video'
             ? `<video controls preload="none" style="width:100%;max-width:420px;" src="${escapeHtml(item.asset_path)}"></video>`
@@ -270,12 +282,14 @@
             <label>Sort order</label>
             <input data-field="sort_order" type="number" step="1" value="${Number(item.sort_order ?? index * 10)}" ${readOnly ? 'disabled' : ''}>
             <label>Media type</label>
-            <input data-field="media_kind" type="text" value="${escapeHtml(mediaKind)}" disabled>
+            <select data-field="media_kind" onchange="refreshCabinCueItemMediaHint('${escapeHtml(item.id)}')" ${readOnly ? 'disabled' : ''}>
+              ${buildMediaKindOptions(category, mediaKind)}
+            </select>
             <label>Current asset URL</label>
             <input data-field="asset_path" type="text" value="${escapeHtml(item.asset_path || '')}" disabled>
             <p class="muted" data-role="media-hint">Upload ${mediaKind === 'video' ? 'MP4 video (max 150MB)' : 'MP3 audio (max 15MB)'}.</p>
             <div class="input-group">
-              <input id="cabincueUpload_${escapeHtml(item.id)}" type="file" accept="${escapeHtml(uploadAcceptForCategory(category))}" ${readOnly ? 'disabled' : ''}>
+              <input id="cabincueUpload_${escapeHtml(item.id)}" type="file" accept="${escapeHtml(uploadAcceptForMediaKind(mediaKind))}" ${readOnly ? 'disabled' : ''}>
               <button onclick="uploadCabinCueAsset('${escapeHtml(item.id)}')" ${readOnly ? 'disabled' : ''}>Upload / Replace Asset</button>
               <button onclick="removeCabinCueItem('${escapeHtml(item.id)}')" class="danger" ${readOnly ? 'disabled' : ''}>Remove Item</button>
             </div>
@@ -462,7 +476,8 @@
       const id = card.getAttribute('data-cabincue-item-id');
       const getField = (field) => card.querySelector(`[data-field="${field}"]`);
       const category = (getField('category')?.value || '').trim();
-      const mediaKind = announcementTypeForCategory(category);
+      const selectedMediaKind = (getField('media_kind')?.value || '').trim();
+      const mediaKind = announcementTypeForCategory(category, selectedMediaKind);
       const announcementKey = (getField('announcement_key')?.value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_');
       const title = (getField('title')?.value || '').trim();
       const description = (getField('description')?.value || '').trim() || null;
@@ -605,12 +620,16 @@
     const card = document.querySelector(`[data-cabincue-item-id="${itemId}"]`);
     if (!card) return;
     const category = card.querySelector('[data-field="category"]')?.value || CATEGORY_OPTIONS[0].value;
-    const mediaKind = announcementTypeForCategory(category);
+    const currentMediaKind = card.querySelector('[data-field="media_kind"]')?.value || 'audio';
+    const mediaKind = announcementTypeForCategory(category, currentMediaKind);
     const mediaField = card.querySelector('[data-field="media_kind"]');
-    if (mediaField) mediaField.value = mediaKind;
+    if (mediaField) {
+      mediaField.innerHTML = buildMediaKindOptions(category, mediaKind);
+      mediaField.value = mediaKind;
+    }
 
     const fileInput = byId(`cabincueUpload_${itemId}`);
-    if (fileInput) fileInput.setAttribute('accept', uploadAcceptForCategory(category));
+    if (fileInput) fileInput.setAttribute('accept', uploadAcceptForMediaKind(mediaKind));
 
     const hint = card.querySelector('[data-role="media-hint"]');
     if (hint) {
@@ -637,7 +656,8 @@
     }
 
     const category = card.querySelector('[data-field="category"]')?.value || item.category;
-    const expectedKind = announcementTypeForCategory(category);
+    const selectedKind = card.querySelector('[data-field="media_kind"]')?.value || item.media_kind;
+    const expectedKind = announcementTypeForCategory(category, selectedKind);
     const fileInput = byId(`cabincueUpload_${itemId}`);
     const file = fileInput?.files?.[0];
     if (!file) {
@@ -651,8 +671,8 @@
     const maxBytes = isVideo ? VIDEO_MAX_BYTES : AUDIO_MAX_BYTES;
     const fileExt = (file.name.split('.').pop() || '').toLowerCase();
 
-    if (fileExt !== expectedExt || file.type !== expectedMime) {
-      setStatus(`Invalid file type for ${category}. Expected ${expectedExt.toUpperCase()} (${expectedMime}).`, true);
+    if (fileExt !== expectedExt) {
+      setStatus(`Invalid file type for ${category}. Expected ${expectedExt.toUpperCase()}.`, true);
       return;
     }
     if (file.size < 1 || file.size > maxBytes) {
