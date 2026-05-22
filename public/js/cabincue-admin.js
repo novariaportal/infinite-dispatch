@@ -10,6 +10,18 @@
   const CATEGORY_LOOKUP = new Map(CATEGORY_OPTIONS.map((entry) => [entry.value, entry]));
   const AUDIO_MAX_BYTES = 15 * 1024 * 1024;
   const VIDEO_MAX_BYTES = 150 * 1024 * 1024;
+  const MEDIA_KIND_CONFIG = {
+    audio: {
+      extension: 'mp3',
+      mimes: ['audio/mpeg', 'audio/mp3'],
+      accept: '.mp3,audio/mpeg'
+    },
+    video: {
+      extension: 'mp4',
+      mimes: ['video/mp4'],
+      accept: '.mp4,video/mp4'
+    }
+  };
   const DEFAULT_TEMPLATE_ITEMS = [
     {
       announcement_key: 'boarding_welcome',
@@ -206,7 +218,7 @@
   }
 
   function uploadAcceptForMediaKind(kind) {
-    return kind === 'video' ? '.mp4,video/mp4' : '.mp3,audio/mpeg';
+    return MEDIA_KIND_CONFIG[kind]?.accept || MEDIA_KIND_CONFIG.audio.accept;
   }
 
   function buildMediaKindOptions(category, selectedMediaKind) {
@@ -290,8 +302,8 @@
             <p class="muted" data-role="media-hint">Upload ${mediaKind === 'video' ? 'MP4 video (max 150MB)' : 'MP3 audio (max 15MB)'}.</p>
             <div class="input-group">
               <input id="cabincueUpload_${escapeHtml(item.id)}" type="file" accept="${escapeHtml(uploadAcceptForMediaKind(mediaKind))}" ${readOnly ? 'disabled' : ''}>
-              <button onclick="uploadCabinCueAsset('${escapeHtml(item.id)}')" ${readOnly ? 'disabled' : ''}>Upload / Replace Asset</button>
-              <button onclick="removeCabinCueItem('${escapeHtml(item.id)}')" class="danger" ${readOnly ? 'disabled' : ''}>Remove Item</button>
+              <button data-action="upload-item" data-item-id="${escapeHtml(item.id)}" ${readOnly ? 'disabled' : ''}>Upload / Replace Asset</button>
+              <button data-action="remove-item" data-item-id="${escapeHtml(item.id)}" class="danger" ${readOnly ? 'disabled' : ''}>Remove Item</button>
             </div>
             <div>${previewHtml}</div>
           </div>
@@ -304,6 +316,17 @@
       select.addEventListener('change', () => {
         const itemId = select.getAttribute('data-item-id');
         if (itemId) refreshCabinCueItemMediaHint(itemId);
+      });
+    });
+    [...container.querySelectorAll('button[data-action="upload-item"], button[data-action="remove-item"]')].forEach((button) => {
+      button.addEventListener('click', () => {
+        const itemId = button.getAttribute('data-item-id');
+        if (!itemId) return;
+        if (button.getAttribute('data-action') === 'upload-item') {
+          uploadCabinCueAsset(itemId);
+          return;
+        }
+        removeCabinCueItem(itemId);
       });
     });
   }
@@ -664,6 +687,7 @@
     const category = card.querySelector('[data-field="category"]')?.value || item.category;
     const selectedKind = card.querySelector('[data-field="media_kind"]')?.value || item.media_kind;
     const expectedKind = announcementTypeForCategory(category, selectedKind);
+    const mediaConfig = MEDIA_KIND_CONFIG[expectedKind] || MEDIA_KIND_CONFIG.audio;
     const fileInput = byId(`cabincueUpload_${itemId}`);
     const file = fileInput?.files?.[0];
     if (!file) {
@@ -672,8 +696,8 @@
     }
 
     const isVideo = expectedKind === 'video';
-    const expectedExt = isVideo ? 'mp4' : 'mp3';
-    const expectedMime = isVideo ? 'video/mp4' : 'audio/mpeg';
+    const expectedExt = mediaConfig.extension;
+    const expectedMime = mediaConfig.mimes[0];
     const maxBytes = isVideo ? VIDEO_MAX_BYTES : AUDIO_MAX_BYTES;
     const fileExt = (file.name.split('.').pop() || '').toLowerCase();
 
@@ -684,8 +708,7 @@
     }
     if (file.type) {
       const normalizedMime = String(file.type).toLowerCase();
-      const allowedMimes = isVideo ? ['video/mp4'] : ['audio/mpeg', 'audio/mp3'];
-      if (!allowedMimes.includes(normalizedMime)) {
+      if (!mediaConfig.mimes.includes(normalizedMime)) {
         setStatus(`Invalid MIME type (${file.type}) for ${expectedExt.toUpperCase()} upload.`, true);
         return;
       }
