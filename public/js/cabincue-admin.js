@@ -338,7 +338,7 @@
         .order('version_number', { ascending: false }),
       client
         .from('cabincue_release_records')
-        .select('id, profile_id, version_id, rollback_from_version_id, notes, released_at, cabincue_profile_versions(version_number)')
+        .select('id, profile_id, version_id, rollback_from_version_id, notes, released_at, cabincue_profile_versions!cabincue_release_records_version_id_fkey(version_number)')
         .eq('profile_id', profileId)
         .order('released_at', { ascending: false })
     ]);
