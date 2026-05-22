@@ -4,6 +4,10 @@ import {
   onThemeChangeFromHeader,
   onGlassToggle,
   onGlassToggleFromHeader,
+  onLookChange,
+  onLookChangeFromHeader,
+  onLookPresetChange,
+  onLookPresetChangeFromHeader,
   showPage,
   previewLandingFlow,
   previewLandingFlowFromKey,
@@ -48,6 +52,10 @@ window.onThemeChange = onThemeChange;
 window.onThemeChangeFromHeader = onThemeChangeFromHeader;
 window.onGlassToggle = onGlassToggle;
 window.onGlassToggleFromHeader = onGlassToggleFromHeader;
+window.onLookChange = onLookChange;
+window.onLookChangeFromHeader = onLookChangeFromHeader;
+window.onLookPresetChange = onLookPresetChange;
+window.onLookPresetChangeFromHeader = onLookPresetChangeFromHeader;
 window.openAuth = openAuth;
 window.showPage = showPage;
 window.previewLandingFlow = previewLandingFlow;

@@ -10,6 +10,53 @@
   const CATEGORY_LOOKUP = new Map(CATEGORY_OPTIONS.map((entry) => [entry.value, entry]));
   const AUDIO_MAX_BYTES = 15 * 1024 * 1024;
   const VIDEO_MAX_BYTES = 150 * 1024 * 1024;
+  const DEFAULT_TEMPLATE_ITEMS = [
+    {
+      announcement_key: 'boarding_welcome',
+      category: 'boarding',
+      title: 'Boarding Welcome',
+      description: 'Initial boarding welcome message.',
+      media_kind: 'audio',
+      sort_order: 10,
+      is_active: true
+    },
+    {
+      announcement_key: 'departure_prep',
+      category: 'departure-prep',
+      title: 'Departure Preparation',
+      description: 'Cabin secured and departure prep message.',
+      media_kind: 'audio',
+      sort_order: 20,
+      is_active: true
+    },
+    {
+      announcement_key: 'safety_video',
+      category: 'safety-video',
+      title: 'Safety Video',
+      description: 'Primary safety video announcement slot.',
+      media_kind: 'video',
+      sort_order: 30,
+      is_active: true
+    },
+    {
+      announcement_key: 'descent_landing',
+      category: 'descent-landing',
+      title: 'Descent and Landing',
+      description: 'Arrival and cabin prep for landing.',
+      media_kind: 'audio',
+      sort_order: 40,
+      is_active: true
+    },
+    {
+      announcement_key: 'other_announcements',
+      category: 'other-announcements',
+      title: 'Other Announcements',
+      description: 'Additional discretionary announcement slot.',
+      media_kind: 'video',
+      sort_order: 50,
+      is_active: true
+    }
+  ];
 
   const state = {
     profiles: [],
@@ -156,6 +203,22 @@
   function uploadAcceptForCategory(category) {
     const kind = announcementTypeForCategory(category);
     return kind === 'video' ? '.mp4,video/mp4' : '.mp3,audio/mpeg';
+  }
+
+  function buildTemplateClonePayload(versionId, sourceItems = []) {
+    return (sourceItems || []).map((item, index) => ({
+      version_id: versionId,
+      announcement_key: String(item.announcement_key || `announcement_${index + 1}`),
+      category: CATEGORY_LOOKUP.has(item.category) ? item.category : 'other-announcements',
+      title: String(item.title || `Announcement ${index + 1}`),
+      description: item.description ?? null,
+      media_kind: item.media_kind === 'video' ? 'video' : 'audio',
+      asset_path: item.asset_path || null,
+      asset_mime: item.asset_mime || null,
+      asset_size_bytes: Number.isFinite(Number(item.asset_size_bytes)) ? Number(item.asset_size_bytes) : null,
+      sort_order: Number.isFinite(Number(item.sort_order)) ? Number(item.sort_order) : (index + 1) * 10,
+      is_active: item.is_active !== false
+    }));
   }
 
   function renderEditor() {
@@ -876,6 +939,7 @@
       || state.versions.find((version) => version.profile_id === generic.id && version.status === 'released')?.id
       || null;
 
+    let sourceItems = [];
     if (genericVersionId) {
       const { data: genericItems, error: itemsError } = await client
         .from('cabincue_announcement_items')
@@ -885,14 +949,22 @@
 
       if (itemsError) {
         setStatus(`Profile created, but template copy failed: ${itemsError.message}`, true);
-      } else if ((genericItems || []).length) {
-        const clonePayload = genericItems.map((item) => ({ ...item, version_id: liveVersion.id }));
-        const { error: cloneError } = await client
-          .from('cabincue_announcement_items')
-          .insert(clonePayload);
-        if (cloneError) {
-          setStatus(`Profile created, but item clone failed: ${cloneError.message}`, true);
-        }
+      } else {
+        sourceItems = genericItems || [];
+      }
+    }
+
+    if (!sourceItems.length) {
+      sourceItems = DEFAULT_TEMPLATE_ITEMS;
+    }
+
+    const clonePayload = buildTemplateClonePayload(liveVersion.id, sourceItems);
+    if (clonePayload.length) {
+      const { error: cloneError } = await client
+        .from('cabincue_announcement_items')
+        .insert(clonePayload);
+      if (cloneError) {
+        setStatus(`Profile created, but item clone failed: ${cloneError.message}`, true);
       }
     }
 
