@@ -276,13 +276,13 @@
             <label>Description</label>
             <input data-field="description" type="text" value="${escapeHtml(item.description || '')}" ${readOnly ? 'disabled' : ''}>
             <label>Category</label>
-            <select data-field="category" onchange="refreshCabinCueItemMediaHint('${escapeHtml(item.id)}')" ${readOnly ? 'disabled' : ''}>
+            <select data-field="category" data-item-id="${escapeHtml(item.id)}" ${readOnly ? 'disabled' : ''}>
               ${buildCategoryOptions(category)}
             </select>
             <label>Sort order</label>
             <input data-field="sort_order" type="number" step="1" value="${Number(item.sort_order ?? index * 10)}" ${readOnly ? 'disabled' : ''}>
             <label>Media type</label>
-            <select data-field="media_kind" onchange="refreshCabinCueItemMediaHint('${escapeHtml(item.id)}')" ${readOnly ? 'disabled' : ''}>
+            <select data-field="media_kind" data-item-id="${escapeHtml(item.id)}" ${readOnly ? 'disabled' : ''}>
               ${buildMediaKindOptions(category, mediaKind)}
             </select>
             <label>Current asset URL</label>
@@ -300,6 +300,12 @@
       .join('');
 
     container.innerHTML = `${editorHeader}${itemCards}<div class="list-item"><button onclick="saveCabinCueDraftItems()" ${readOnly ? 'disabled' : ''}>Save Announcements</button></div>`;
+    [...container.querySelectorAll('select[data-field="category"], select[data-field="media_kind"]')].forEach((select) => {
+      select.addEventListener('change', () => {
+        const itemId = select.getAttribute('data-item-id');
+        if (itemId) refreshCabinCueItemMediaHint(itemId);
+      });
+    });
   }
 
   async function loadCabinCueProfiles() {
@@ -675,6 +681,14 @@
       const categoryLabel = CATEGORY_LOOKUP.get(category)?.label || category;
       setStatus(`Invalid file type for ${categoryLabel}. Expected ${expectedExt.toUpperCase()}.`, true);
       return;
+    }
+    if (file.type) {
+      const normalizedMime = String(file.type).toLowerCase();
+      const allowedMimes = isVideo ? ['video/mp4'] : ['audio/mpeg', 'audio/mp3'];
+      if (!allowedMimes.includes(normalizedMime)) {
+        setStatus(`Invalid MIME type (${file.type}) for ${expectedExt.toUpperCase()} upload.`, true);
+        return;
+      }
     }
     if (file.size < 1 || file.size > maxBytes) {
       setStatus(`File size exceeds ${isVideo ? '150MB video' : '15MB audio'} limit.`, true);
