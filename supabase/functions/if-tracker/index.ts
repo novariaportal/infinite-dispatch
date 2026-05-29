@@ -15,6 +15,14 @@ const MAX_VALID_COMPLETION_ALT_FT = 5000;
 const MAX_VALID_COMPLETION_GS_KTS = 260;
 const ENROUTE_COMPLETION_GRACE_FROM_START_MS = 48 * 60 * 60 * 1000;
 const RECONCILE_MAX_DISTANCE_NM = 120;
+const SESSIONS_TTL_MS = 10 * 60 * 1000;
+const FLIGHTS_TTL_MS = 15 * 1000;
+const LIVE_API_BASE_URL = "https://api.infiniteflight.com/public/v2";
+type LiveApiCacheEntry = {
+  data: unknown;
+  expiresAt: number;
+};
+const liveApiCache = new Map<string, LiveApiCacheEntry>();
 const AIRPORT_COORDS: Record<string, { lat: number; lon: number }> = {
   WSSS: { lat: 1.35, lon: 103.99 },
   WIII: { lat: -6.12, lon: 106.66 },
@@ -109,6 +117,53 @@ function readDateMs(value: unknown) {
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 
+function getCachedLiveApiResult<T>(cacheKey: string): T | null {
+  const entry = liveApiCache.get(cacheKey);
+  if (!entry) return null;
+  if (Date.now() >= entry.expiresAt) {
+    liveApiCache.delete(cacheKey);
+    return null;
+  }
+  return entry.data as T;
+}
+
+function setCachedLiveApiResult(cacheKey: string, data: unknown, ttlMs: number) {
+  liveApiCache.set(cacheKey, {
+    data,
+    expiresAt: Date.now() + ttlMs
+  });
+}
+
+async function fetchLiveApiResultCached<T>(
+  path: string,
+  ifApiKey: string,
+  ttlMs: number,
+  cacheKey: string
+): Promise<T> {
+  const cached = getCachedLiveApiResult<T>(cacheKey);
+  if (cached !== null) return cached;
+
+  const response = await fetch(`${LIVE_API_BASE_URL}${path}`, {
+    method: "GET",
+    headers: {
+      Authorization: "Bearer " + ifApiKey
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`Infinite Flight request failed for ${path}`);
+  }
+
+  const payload = await response.json();
+  if (typeof payload?.errorCode === "number" && payload.errorCode !== 0) {
+    throw new Error(`Infinite Flight returned errorCode ${payload.errorCode} for ${path}`);
+  }
+
+  const result = (payload?.result ?? []) as T;
+  setCachedLiveApiResult(cacheKey, result, ttlMs);
+  return result;
+}
+
 function findReconciledFlight(
   tracking: any,
   flights: any[],
@@ -187,19 +242,17 @@ serve(async () => {
     return new Response(JSON.stringify({ success: true, updated: 0 }), { status: 200 });
   }
 
-  const sessionsRes = await fetch("https://api.infiniteflight.com/public/v2/sessions", {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${ifApiKey}`
-    }
-  });
-
-  if (!sessionsRes.ok) {
+  let liveSessions: any[] = [];
+  try {
+    liveSessions = await fetchLiveApiResultCached<any[]>(
+      "/sessions",
+      ifApiKey,
+      SESSIONS_TTL_MS,
+      "if:sessions"
+    );
+  } catch {
     return new Response(JSON.stringify({ error: "Infinite Flight sessions request failed" }), { status: 502 });
   }
-
-  const sessionsPayload = await sessionsRes.json();
-  const liveSessions = sessionsPayload?.result ?? [];
 
   const flightsByServerType = {};
 
@@ -215,23 +268,16 @@ serve(async () => {
       continue;
     }
 
-    const flightsRes = await fetch(
-      `https://api.infiniteflight.com/public/v2/sessions/${matchSession.id}/flights`,
-      {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${ifApiKey}`
-        }
-      }
-    );
-
-    if (!flightsRes.ok) {
+    try {
+      flightsByServerType[serverType] = await fetchLiveApiResultCached<any[]>(
+        `/sessions/${matchSession.id}/flights`,
+        ifApiKey,
+        FLIGHTS_TTL_MS,
+        `if:flights:${matchSession.id}`
+      );
+    } catch {
       flightsByServerType[serverType] = [];
-      continue;
     }
-
-    const flightsPayload = await flightsRes.json();
-    flightsByServerType[serverType] = flightsPayload?.result ?? [];
   }
 
   for (const tracking of sessions) {
@@ -297,7 +343,7 @@ serve(async () => {
           typeof destinationAirport.lat === "number" &&
           typeof destinationAirport.lon === "number"
         ) {
-          distanceRemainingNm = haversineNm(
+          const distanceRemainingNm = haversineNm(
             tracking.last_lat,
             tracking.last_lng,
             destinationAirport.lat,

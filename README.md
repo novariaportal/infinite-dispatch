@@ -268,9 +268,9 @@ Go to **Project Settings → Secrets** or **Vault** and add:
 ### 3) Schedule the Function
 In **Edge Functions → if-tracker → Schedule**, set:
 ```
-*/2 * * * *
+*/10 * * * *
 ```
-(Every 2 minutes)
+(Every 10 minutes to respect `/sessions` minimum polling interval)
 
 The tracker validates completion (destination proximity + landing profile) before marking a flight completed and awarding pay/hours.
 It also applies a 48-hour grace window from flight start before missing flights can be completed, plus callsign-family reconciliation so brief pauses or split legs do not prematurely end tracking.
