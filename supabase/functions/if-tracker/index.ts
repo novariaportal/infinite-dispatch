@@ -222,12 +222,203 @@ function findReconciledFlight(
   return bestIdentityMatch || bestMatch;
 }
 
-serve(async () => {
+function findActiveFlightMatch(tracking: any, flights: any[]) {
+  const callsign = normalizeCallsign(tracking.callsign);
+  const preferredIdentityUsername = normalizeIdentityUsername(tracking.identity_link_username);
+
+  if (!callsign) {
+    return {
+      callsign,
+      preferredIdentityUsername,
+      activeMatch: null,
+      matchMethod: null
+    };
+  }
+
+  let identityAwareMatch: any = null;
+  let callsignOnlyMatch: any = null;
+  for (const flight of flights) {
+    if (normalizeCallsign(flight?.callsign) !== callsign) continue;
+    if (!callsignOnlyMatch) callsignOnlyMatch = flight;
+    if (
+      preferredIdentityUsername &&
+      readFlightIdentityUsername(flight) === preferredIdentityUsername
+    ) {
+      identityAwareMatch = flight;
+      break;
+    }
+  }
+
+  if (identityAwareMatch) {
+    return {
+      callsign,
+      preferredIdentityUsername,
+      activeMatch: identityAwareMatch,
+      matchMethod: "identity"
+    };
+  }
+  if (callsignOnlyMatch) {
+    return {
+      callsign,
+      preferredIdentityUsername,
+      activeMatch: callsignOnlyMatch,
+      matchMethod: "callsign"
+    };
+  }
+
+  const reconciledMatch = findReconciledFlight(tracking, flights, preferredIdentityUsername);
+  return {
+    callsign,
+    preferredIdentityUsername,
+    activeMatch: reconciledMatch,
+    matchMethod: reconciledMatch ? "reconciled" : null
+  };
+}
+
+function sanitizeLiveFlight(flight: any, callsignFallback: string) {
+  if (!flight) return null;
+  return {
+    callsign: normalizeCallsign(flight.callsign) || callsignFallback || null,
+    latitude: Number(flight.latitude),
+    longitude: Number(flight.longitude),
+    altitude: Number(flight.altitude),
+    groundspeed: Number(flight.groundspeed),
+    identity_username: readFlightIdentityUsername(flight)
+  };
+}
+
+async function readOnDemandTrackingTarget(supabase: any, req: Request) {
+  let body: any = {};
+  try {
+    body = await req.json();
+  } catch {
+    body = {};
+  }
+
+  const trackingId = String(body?.tracking_id || body?.trackingId || "").trim();
+  const userId = String(body?.user_id || body?.userId || "").trim();
+
+  if (!trackingId && !userId) {
+    return {
+      status: 400,
+      response: new Response(
+        JSON.stringify({ error: "tracking_id or user_id is required for on-demand mode" }),
+        { status: 400 }
+      )
+    };
+  }
+
+  let query = supabase
+    .from("flight_tracking")
+    .select("id, user_id, callsign, origin, destination, status, server_type, identity_link_username, last_lat, last_lng, last_alt, last_speed, updated_at, created_at")
+    .eq("status", "enroute")
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  if (trackingId) {
+    query = query.eq("id", trackingId);
+  } else {
+    query = query.eq("user_id", userId);
+  }
+
+  const { data, error } = await query.maybeSingle();
+  if (error) {
+    return {
+      status: 500,
+      response: new Response(JSON.stringify({ error: error.message }), { status: 500 })
+    };
+  }
+  if (!data) {
+    return {
+      status: 404,
+      response: new Response(JSON.stringify({ error: "No active tracking row found" }), { status: 404 })
+    };
+  }
+
+  return { status: 200, tracking: data };
+}
+
+serve(async (req) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const ifApiKey = Deno.env.get("IF_API_KEY")!;
 
   const supabase = createClient(supabaseUrl, supabaseKey);
+  const url = new URL(req.url);
+  const onDemand = req.method === "POST" && url.searchParams.get("mode") === "on-demand";
+
+  if (onDemand) {
+    const target = await readOnDemandTrackingTarget(supabase, req);
+    if (target.response) return target.response;
+
+    const tracking = target.tracking;
+    let liveSessions: any[] = [];
+    try {
+      liveSessions = await fetchLiveApiResultCached<any[]>(
+        "/sessions",
+        ifApiKey,
+        SESSIONS_TTL_MS,
+        "if:sessions"
+      );
+    } catch {
+      return new Response(JSON.stringify({ error: "Infinite Flight sessions request failed" }), { status: 502 });
+    }
+
+    const serverType = tracking.server_type || "casual";
+    const worldType = SERVER_WORLD_TYPES[serverType] ?? SERVER_WORLD_TYPES.casual;
+    const matchSession = liveSessions.find((session) => session.worldType === worldType);
+
+    let flights: any[] = [];
+    if (matchSession?.id) {
+      try {
+        flights = await fetchLiveApiResultCached<any[]>(
+          `/sessions/${matchSession.id}/flights`,
+          ifApiKey,
+          FLIGHTS_TTL_MS,
+          `if:flights:${matchSession.id}`
+        );
+      } catch {
+        flights = [];
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+    const { callsign, activeMatch, matchMethod } = findActiveFlightMatch(tracking, flights);
+    if (callsign && activeMatch) {
+      await supabase
+        .from("flight_tracking")
+        .update({
+          status: "enroute",
+          callsign: normalizeCallsign(activeMatch.callsign) || callsign,
+          last_lat: activeMatch.latitude,
+          last_lng: activeMatch.longitude,
+          last_alt: activeMatch.altitude,
+          last_speed: activeMatch.groundspeed,
+          updated_at: nowIso
+        })
+        .eq("id", tracking.id);
+    } else {
+      await supabase
+        .from("flight_tracking")
+        .update({ updated_at: nowIso })
+        .eq("id", tracking.id);
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: true,
+        on_demand: true,
+        tracking_id: tracking.id,
+        user_id: tracking.user_id,
+        server_type: serverType,
+        session_id: matchSession?.id || null,
+        found: Boolean(callsign && activeMatch),
+        match_method: matchMethod,
+        live_flight: sanitizeLiveFlight(activeMatch, callsign)
+      }),
+      { status: 200 }
+    );
+  }
 
   const { data: sessions, error } = await supabase
     .from("flight_tracking")
@@ -284,8 +475,7 @@ serve(async () => {
     const nowIso = new Date().toISOString();
     const serverType = tracking.server_type || "casual";
     const flights = flightsByServerType[serverType] || [];
-    const callsign = normalizeCallsign(tracking.callsign);
-    const preferredIdentityUsername = normalizeIdentityUsername(tracking.identity_link_username);
+    const { callsign, activeMatch } = findActiveFlightMatch(tracking, flights);
     if (!callsign) {
       await supabase
         .from("flight_tracking")
@@ -293,22 +483,6 @@ serve(async () => {
         .eq("id", tracking.id);
       continue;
     }
-    let identityAwareMatch: any = null;
-    let callsignOnlyMatch: any = null;
-    for (const flight of flights) {
-      if (normalizeCallsign(flight?.callsign) !== callsign) continue;
-      if (!callsignOnlyMatch) callsignOnlyMatch = flight;
-      if (
-        preferredIdentityUsername &&
-        readFlightIdentityUsername(flight) === preferredIdentityUsername
-      ) {
-        identityAwareMatch = flight;
-        break;
-      }
-    }
-    const match = identityAwareMatch || callsignOnlyMatch;
-
-    const activeMatch = match || findReconciledFlight(tracking, flights, preferredIdentityUsername);
 
     if (activeMatch) {
       await supabase
