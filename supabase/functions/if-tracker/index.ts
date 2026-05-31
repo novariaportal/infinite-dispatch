@@ -302,7 +302,7 @@ async function readOnDemandTrackingTarget(supabase: any, req: Request) {
     return {
       status: 400,
       response: new Response(
-        JSON.stringify({ error: "tracking_id or user_id is required for on-demand mode" }),
+        JSON.stringify({ error: "tracking_id/trackingId or user_id/userId is required for on-demand mode" }),
         { status: 400 }
       )
     };
@@ -360,8 +360,12 @@ serve(async (req) => {
         SESSIONS_TTL_MS,
         "if:sessions"
       );
-    } catch {
-      return new Response(JSON.stringify({ error: "Infinite Flight sessions request failed" }), { status: 502 });
+    } catch (error) {
+      const details = error instanceof Error ? error.message : "Unknown error";
+      return new Response(
+        JSON.stringify({ error: "Infinite Flight sessions request failed", details }),
+        { status: 502 }
+      );
     }
 
     const serverType = tracking.server_type || "casual";
@@ -441,8 +445,12 @@ serve(async (req) => {
       SESSIONS_TTL_MS,
       "if:sessions"
     );
-  } catch {
-    return new Response(JSON.stringify({ error: "Infinite Flight sessions request failed" }), { status: 502 });
+  } catch (error) {
+    const details = error instanceof Error ? error.message : "Unknown error";
+    return new Response(
+      JSON.stringify({ error: "Infinite Flight sessions request failed", details }),
+      { status: 502 }
+    );
   }
 
   const flightsByServerType = {};
