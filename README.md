@@ -281,7 +281,7 @@ Use the same `if-tracker` function in on-demand mode when you need a live "find 
 
 - Method: `POST`
 - URL: `https://<project-ref>.functions.supabase.co/if-tracker?mode=on-demand`
-- Body: provide either `tracking_id` or `user_id`
+- Body: provide either `tracking_id` or `user_id` (canonical keys; camelCase aliases are also accepted)
 
 Example body:
 ```json

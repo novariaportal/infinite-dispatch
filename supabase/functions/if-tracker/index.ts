@@ -302,7 +302,7 @@ async function readOnDemandTrackingTarget(supabase: any, req: Request) {
     return {
       status: 400,
       response: new Response(
-        JSON.stringify({ error: "tracking_id/trackingId or user_id/userId is required for on-demand mode" }),
+        JSON.stringify({ error: "Either tracking_id or user_id is required for on-demand mode" }),
         { status: 400 }
       )
     };
