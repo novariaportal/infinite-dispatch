@@ -1007,7 +1007,281 @@ select[aria-invalid='true'] {
   gap: 12px;
 }
 
+/* 2.0 full neutral SaaS refresh */
+body.look-2 main {
+  max-width: 1320px;
+  padding: 24px;
+}
+
+body.look-2 .landing-hero,
+body.look-2 .landing-grid {
+  max-width: 1120px;
+}
+
+body.look-2 .card,
+body.look-2 .stat-box,
+body.look-2 .list-item,
+body.look-2 .history-list li,
+body.look-2 .activity-item,
+body.look-2 pre {
+  border-radius: 20px;
+  border: 1px solid color-mix(in srgb, var(--border) 88%, #cfd7e3);
+  background: linear-gradient(175deg, color-mix(in srgb, #ffffff 96%, transparent), color-mix(in srgb, #eff3f8 90%, transparent));
+  box-shadow:
+    0 16px 36px color-mix(in srgb, #0f172a 11%, transparent),
+    0 1px 0 color-mix(in srgb, #ffffff 92%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #ffffff 48%, transparent);
+}
+
+:root[data-theme='dark'] body.look-2 .card,
+:root[data-theme='dark'] body.look-2 .stat-box,
+:root[data-theme='dark'] body.look-2 .list-item,
+:root[data-theme='dark'] body.look-2 .history-list li,
+:root[data-theme='dark'] body.look-2 .activity-item,
+:root[data-theme='dark'] body.look-2 pre {
+  border: 1px solid color-mix(in srgb, var(--border) 86%, #3f4b5f);
+  background: linear-gradient(175deg, color-mix(in srgb, #1d2735 92%, transparent), color-mix(in srgb, #172130 88%, transparent));
+  box-shadow:
+    0 16px 36px color-mix(in srgb, #000000 34%, transparent),
+    0 1px 0 color-mix(in srgb, #b6c2da 12%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #dce7ff 8%, transparent);
+}
+
+body.look-2 .landing-grid {
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
+}
+
+body.look-2 .landing-preview {
+  min-height: 172px;
+  padding: 20px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+body.look-2 .landing-preview:hover,
+body.look-2 .landing-preview:focus-visible {
+  transform: translateY(-6px);
+  box-shadow:
+    0 24px 38px color-mix(in srgb, var(--accent) 20%, transparent),
+    0 1px 0 color-mix(in srgb, #ffffff 90%, transparent);
+}
+
+body.look-2 .preview-shot {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 14px;
+}
+
+body.look-2 .preview-shot code {
+  font-size: 0.82rem;
+  letter-spacing: 0.01em;
+}
+
+body.look-2 .app-shell {
+  grid-template-columns: 304px 1fr;
+  gap: 18px;
+}
+
+body.look-2 .sidebar {
+  padding: 18px;
+}
+
+body.look-2 .sidebar-title-row h3 {
+  font-size: 1.05rem;
+}
+
+body.look-2 .sidebar-collapse-btn {
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--border) 92%, #cfd8e5);
+  background: color-mix(in srgb, var(--surface-2) 92%, #eef2f7);
+  color: var(--text);
+}
+
+:root[data-theme='dark'] body.look-2 .sidebar-collapse-btn {
+  background: color-mix(in srgb, #232f40 88%, var(--surface-2));
+  color: color-mix(in srgb, #f3f7ff 90%, var(--text));
+}
+
+body.look-2 .sidebar-nav {
+  gap: 9px;
+}
+
+body.look-2 .nav-btn {
+  min-height: 46px;
+  border-radius: 12px;
+  font-size: 0.93rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+body.look-2 .sidebar-settings label {
+  margin-top: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--muted) 90%, var(--text));
+}
+
+body.look-2 input,
+body.look-2 select,
+body.look-2 button,
+body.look-2 .link-btn {
+  min-height: 46px;
+  border-radius: 12px;
+  font-size: 0.92rem;
+}
+
+body.look-2 input,
+body.look-2 select {
+  border: 1px solid color-mix(in srgb, var(--border) 90%, #cdd6e3);
+  background: color-mix(in srgb, var(--surface-2) 96%, #eef2f8);
+}
+
+:root[data-theme='dark'] body.look-2 input,
+:root[data-theme='dark'] body.look-2 select {
+  border: 1px solid color-mix(in srgb, var(--border) 86%, #435167);
+  background: color-mix(in srgb, #212d3d 88%, var(--surface-2));
+  color: color-mix(in srgb, #eef4ff 92%, var(--text));
+}
+
+body.look-2 button:not(.nav-btn):not(.sidebar-collapse-btn) {
+  border: 0;
+  border-radius: 12px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  box-shadow:
+    0 14px 24px color-mix(in srgb, var(--accent) 28%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #ffffff 62%, transparent);
+}
+
+body.look-2 button.warning {
+  background: linear-gradient(135deg, color-mix(in srgb, #d68a29 88%, #f2a44a), color-mix(in srgb, #b26a14 92%, #c77c1f));
+}
+
+body.look-2 button.success {
+  background: linear-gradient(135deg, color-mix(in srgb, #2ca067 86%, #3cb37a), color-mix(in srgb, #118a4f 92%, #1f9e60));
+}
+
+body.look-2 button.danger {
+  background: linear-gradient(135deg, color-mix(in srgb, #e25d5d 86%, #f07474), color-mix(in srgb, #c53d3d 92%, #d34e4e));
+}
+
+body.look-2 .checkbox-row {
+  margin-top: 10px;
+  font-size: 0.86rem;
+}
+
+body.look-2 .checkbox-row input {
+  min-height: 0;
+}
+
+body.look-2 .stats {
+  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
+
+body.look-2 .stat-box {
+  padding: 16px;
+}
+
+body.look-2 .stat-value {
+  font-size: 1.4rem;
+}
+
+body.look-2 .quick-actions {
+  gap: 10px;
+}
+
+body.look-2 .quick-actions button {
+  min-height: 50px;
+}
+
+body.look-2 .list {
+  gap: 12px;
+}
+
+body.look-2 .list-item {
+  padding: 14px;
+}
+
+body.look-2 .history-list {
+  gap: 12px;
+}
+
+body.look-2 .history-line {
+  font-size: 0.96rem;
+}
+
+body.look-2 .history-meta,
+body.look-2 .activity-item {
+  color: color-mix(in srgb, var(--muted) 92%, var(--text));
+}
+
+body.look-2 .progress-track {
+  height: 11px;
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface-2));
+}
+
+body.look-2 .onboarding-badge {
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+body.look-2 .onboarding-badge-done {
+  border-color: color-mix(in srgb, var(--success) 62%, var(--border));
+  color: color-mix(in srgb, var(--success) 94%, #0f7f45);
+}
+
+body.look-2 .activity-item {
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+
+body.look-2 .activity-empty {
+  border-radius: 14px;
+  border-style: solid;
+}
+
+body.look-2 .mobile-bottom-nav {
+  border-top: 1px solid color-mix(in srgb, var(--border) 88%, #c7d0dd);
+  background: linear-gradient(165deg, color-mix(in srgb, #ffffff 96%, transparent), color-mix(in srgb, #edf2f8 92%, transparent));
+  box-shadow: 0 -14px 28px color-mix(in srgb, #0f172a 14%, transparent);
+}
+
+:root[data-theme='dark'] body.look-2 .mobile-bottom-nav {
+  border-top: 1px solid color-mix(in srgb, var(--border) 88%, #3f4d61);
+  background: linear-gradient(165deg, color-mix(in srgb, #1b2533 92%, transparent), color-mix(in srgb, #151f2e 88%, transparent));
+  box-shadow: 0 -14px 28px color-mix(in srgb, #000000 36%, transparent);
+}
+
+body.look-2 .toast {
+  border-radius: 12px;
+}
+
 @media (max-width: 960px) {
+  body.look-2 main {
+    padding: 14px;
+  }
+
+  body.look-2 .app-shell {
+    grid-template-columns: 1fr;
+  }
+
+  body.look-2 .landing-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  body.look-2 .sidebar {
+    position: static;
+  }
+
+  body.look-2 .content {
+    padding-bottom: calc(110px + env(safe-area-inset-bottom));
+  }
+
   .app-shell {
     grid-template-columns: 1fr;
     gap: 12px;
@@ -1130,6 +1404,22 @@ select[aria-invalid='true'] {
 }
 
 @media (max-width: 640px) {
+  body.look-2 .topbar {
+    border-radius: 16px;
+    margin-bottom: 10px;
+  }
+
+  body.look-2 .header-nav {
+    width: 100%;
+    gap: 8px;
+  }
+
+  body.look-2 .header-nav .header-btn,
+  body.look-2 .header-nav .link-btn,
+  body.look-2 .header-nav select {
+    width: 100%;
+  }
+
   .topbar {
     flex-direction: column;
     align-items: flex-start;
