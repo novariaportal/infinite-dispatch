@@ -276,6 +276,25 @@ The tracker validates completion (destination proximity + landing profile) befor
 It also applies a 48-hour grace window from flight start before missing flights can be completed, plus callsign-family reconciliation so brief pauses or split legs do not prematurely end tracking.
 Tracking rows can also include identity-link metadata (`identity_link_*`) captured from the pilot profile at dispatch time.
 
+### 4) Optional On-Demand Live Lookup (Immediate Refresh)
+Use the same `if-tracker` function in on-demand mode when you need a live "find my current flight now" check for one active row.
+
+- Method: `POST`
+- URL: `https://<project-ref>.functions.supabase.co/if-tracker?mode=on-demand`
+- Body: provide either `tracking_id` or `user_id` (canonical keys; camelCase aliases are also accepted)
+
+Example body:
+```json
+{ "user_id": "<auth-user-uuid>" }
+```
+
+Response includes:
+- `found` and `match_method` (`identity`, `callsign`, or `reconciled`)
+- `live_flight` details when a match is found
+- `session_id` and resolved `server_type`
+
+This on-demand mode keeps the same matching order as scheduled tracking and preserves existing API failure behavior (`/sessions` returns 502 on failure, `/flights` failures degrade to empty results).
+
 ### Optional: Isolated Debug Tracking (Recommended)
 Use a completely separate table + function so debug runs never touch real user tracking rows.
 
