@@ -1,15 +1,27 @@
 (() => {
   const CATEGORY_OPTIONS = [
-    { value: 'boarding', label: 'boarding', mediaKind: 'audio' },
-    { value: 'departure-prep', label: 'departure-prep', mediaKind: 'audio' },
-    { value: 'safety-video', label: 'safety-video', mediaKind: 'video' },
-    { value: 'descent-landing', label: 'descent/landing', mediaKind: 'audio' },
-    { value: 'other-announcements', label: 'other announcements', mediaKind: 'video' }
+    { value: 'boarding', label: 'boarding', mediaKinds: ['audio'] },
+    { value: 'departure-prep', label: 'departure-prep', mediaKinds: ['audio'] },
+    { value: 'safety-video', label: 'safety-video', mediaKinds: ['video'] },
+    { value: 'descent-landing', label: 'descent/landing', mediaKinds: ['audio'] },
+    { value: 'other-announcements', label: 'other announcements', mediaKinds: ['audio', 'video'] }
   ];
 
   const CATEGORY_LOOKUP = new Map(CATEGORY_OPTIONS.map((entry) => [entry.value, entry]));
   const AUDIO_MAX_BYTES = 15 * 1024 * 1024;
   const VIDEO_MAX_BYTES = 150 * 1024 * 1024;
+  const MEDIA_KIND_CONFIG = {
+    audio: {
+      extension: 'mp3',
+      mimes: ['audio/mpeg', 'audio/mp3'],
+      accept: '.mp3,audio/mpeg'
+    },
+    video: {
+      extension: 'mp4',
+      mimes: ['video/mp4'],
+      accept: '.mp4,video/mp4'
+    }
+  };
   const DEFAULT_TEMPLATE_ITEMS = [
     {
       announcement_key: 'boarding_welcome',
@@ -187,9 +199,14 @@
       .join('');
   }
 
-  function announcementTypeForCategory(category) {
+  function getAllowedMediaKinds(category) {
     const entry = CATEGORY_LOOKUP.get(category);
-    return entry?.mediaKind || 'audio';
+    return Array.isArray(entry?.mediaKinds) && entry.mediaKinds.length ? entry.mediaKinds : ['audio'];
+  }
+
+  function resolveMediaKind(category, selectedMediaKind) {
+    const allowedKinds = getAllowedMediaKinds(category);
+    return allowedKinds.includes(selectedMediaKind) ? selectedMediaKind : allowedKinds[0];
   }
 
   function getProfileById(profileId) {
@@ -200,9 +217,16 @@
     return Boolean(state.selectedVersion);
   }
 
-  function uploadAcceptForCategory(category) {
-    const kind = announcementTypeForCategory(category);
-    return kind === 'video' ? '.mp4,video/mp4' : '.mp3,audio/mpeg';
+  function uploadAcceptForMediaKind(kind) {
+    return MEDIA_KIND_CONFIG[kind]?.accept || MEDIA_KIND_CONFIG.audio.accept;
+  }
+
+  function buildMediaKindOptions(category, selectedMediaKind) {
+    const allowedKinds = getAllowedMediaKinds(category);
+    const nextKind = resolveMediaKind(category, selectedMediaKind);
+    return allowedKinds
+      .map((kind) => `<option value="${kind}" ${kind === nextKind ? 'selected' : ''}>${kind}</option>`)
+      .join('');
   }
 
   function buildTemplateClonePayload(versionId, sourceItems = []) {
@@ -248,7 +272,7 @@
       .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
       .map((item, index) => {
         const category = item.category || CATEGORY_OPTIONS[0].value;
-        const mediaKind = announcementTypeForCategory(category);
+        const mediaKind = resolveMediaKind(category, item.media_kind);
         const previewHtml = item.asset_path
           ? mediaKind === 'video'
             ? `<video controls preload="none" style="width:100%;max-width:420px;" src="${escapeHtml(item.asset_path)}"></video>`
@@ -264,20 +288,22 @@
             <label>Description</label>
             <input data-field="description" type="text" value="${escapeHtml(item.description || '')}" ${readOnly ? 'disabled' : ''}>
             <label>Category</label>
-            <select data-field="category" onchange="refreshCabinCueItemMediaHint('${escapeHtml(item.id)}')" ${readOnly ? 'disabled' : ''}>
+            <select data-field="category" data-item-id="${escapeHtml(item.id)}" ${readOnly ? 'disabled' : ''}>
               ${buildCategoryOptions(category)}
             </select>
             <label>Sort order</label>
             <input data-field="sort_order" type="number" step="1" value="${Number(item.sort_order ?? index * 10)}" ${readOnly ? 'disabled' : ''}>
             <label>Media type</label>
-            <input data-field="media_kind" type="text" value="${escapeHtml(mediaKind)}" disabled>
+            <select data-field="media_kind" data-item-id="${escapeHtml(item.id)}" ${readOnly ? 'disabled' : ''}>
+              ${buildMediaKindOptions(category, mediaKind)}
+            </select>
             <label>Current asset URL</label>
             <input data-field="asset_path" type="text" value="${escapeHtml(item.asset_path || '')}" disabled>
             <p class="muted" data-role="media-hint">Upload ${mediaKind === 'video' ? 'MP4 video (max 150MB)' : 'MP3 audio (max 15MB)'}.</p>
             <div class="input-group">
-              <input id="cabincueUpload_${escapeHtml(item.id)}" type="file" accept="${escapeHtml(uploadAcceptForCategory(category))}" ${readOnly ? 'disabled' : ''}>
-              <button onclick="uploadCabinCueAsset('${escapeHtml(item.id)}')" ${readOnly ? 'disabled' : ''}>Upload / Replace Asset</button>
-              <button onclick="removeCabinCueItem('${escapeHtml(item.id)}')" class="danger" ${readOnly ? 'disabled' : ''}>Remove Item</button>
+              <input id="cabincueUpload_${escapeHtml(item.id)}" type="file" accept="${escapeHtml(uploadAcceptForMediaKind(mediaKind))}" ${readOnly ? 'disabled' : ''}>
+              <button data-action="upload-item" data-item-id="${escapeHtml(item.id)}" ${readOnly ? 'disabled' : ''}>Upload / Replace Asset</button>
+              <button data-action="remove-item" data-item-id="${escapeHtml(item.id)}" class="danger" ${readOnly ? 'disabled' : ''}>Remove Item</button>
             </div>
             <div>${previewHtml}</div>
           </div>
@@ -286,6 +312,23 @@
       .join('');
 
     container.innerHTML = `${editorHeader}${itemCards}<div class="list-item"><button onclick="saveCabinCueDraftItems()" ${readOnly ? 'disabled' : ''}>Save Announcements</button></div>`;
+    [...container.querySelectorAll('select[data-field="category"], select[data-field="media_kind"]')].forEach((select) => {
+      select.addEventListener('change', () => {
+        const itemId = select.getAttribute('data-item-id');
+        if (itemId) refreshCabinCueItemMediaHint(itemId);
+      });
+    });
+    [...container.querySelectorAll('button[data-action="upload-item"], button[data-action="remove-item"]')].forEach((button) => {
+      button.addEventListener('click', () => {
+        const itemId = button.getAttribute('data-item-id');
+        if (!itemId) return;
+        if (button.getAttribute('data-action') === 'upload-item') {
+          uploadCabinCueAsset(itemId);
+          return;
+        }
+        removeCabinCueItem(itemId);
+      });
+    });
   }
 
   async function loadCabinCueProfiles() {
@@ -462,7 +505,8 @@
       const id = card.getAttribute('data-cabincue-item-id');
       const getField = (field) => card.querySelector(`[data-field="${field}"]`);
       const category = (getField('category')?.value || '').trim();
-      const mediaKind = announcementTypeForCategory(category);
+      const selectedMediaKind = (getField('media_kind')?.value || '').trim();
+      const mediaKind = resolveMediaKind(category, selectedMediaKind);
       const announcementKey = (getField('announcement_key')?.value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_');
       const title = (getField('title')?.value || '').trim();
       const description = (getField('description')?.value || '').trim() || null;
@@ -605,12 +649,15 @@
     const card = document.querySelector(`[data-cabincue-item-id="${itemId}"]`);
     if (!card) return;
     const category = card.querySelector('[data-field="category"]')?.value || CATEGORY_OPTIONS[0].value;
-    const mediaKind = announcementTypeForCategory(category);
+    const currentMediaKind = card.querySelector('[data-field="media_kind"]')?.value || 'audio';
+    const mediaKind = resolveMediaKind(category, currentMediaKind);
     const mediaField = card.querySelector('[data-field="media_kind"]');
-    if (mediaField) mediaField.value = mediaKind;
+    if (mediaField) {
+      mediaField.innerHTML = buildMediaKindOptions(category, mediaKind);
+    }
 
     const fileInput = byId(`cabincueUpload_${itemId}`);
-    if (fileInput) fileInput.setAttribute('accept', uploadAcceptForCategory(category));
+    if (fileInput) fileInput.setAttribute('accept', uploadAcceptForMediaKind(mediaKind));
 
     const hint = card.querySelector('[data-role="media-hint"]');
     if (hint) {
@@ -637,7 +684,9 @@
     }
 
     const category = card.querySelector('[data-field="category"]')?.value || item.category;
-    const expectedKind = announcementTypeForCategory(category);
+    const selectedKind = card.querySelector('[data-field="media_kind"]')?.value || item.media_kind;
+    const expectedKind = resolveMediaKind(category, selectedKind);
+    const mediaConfig = MEDIA_KIND_CONFIG[expectedKind] || MEDIA_KIND_CONFIG.audio;
     const fileInput = byId(`cabincueUpload_${itemId}`);
     const file = fileInput?.files?.[0];
     if (!file) {
@@ -646,14 +695,22 @@
     }
 
     const isVideo = expectedKind === 'video';
-    const expectedExt = isVideo ? 'mp4' : 'mp3';
-    const expectedMime = isVideo ? 'video/mp4' : 'audio/mpeg';
+    const expectedExt = mediaConfig.extension;
+    const expectedMime = mediaConfig.mimes[0];
     const maxBytes = isVideo ? VIDEO_MAX_BYTES : AUDIO_MAX_BYTES;
     const fileExt = (file.name.split('.').pop() || '').toLowerCase();
 
-    if (fileExt !== expectedExt || file.type !== expectedMime) {
-      setStatus(`Invalid file type for ${category}. Expected ${expectedExt.toUpperCase()} (${expectedMime}).`, true);
+    if (fileExt !== expectedExt) {
+      const categoryLabel = CATEGORY_LOOKUP.get(category)?.label || category;
+      setStatus(`Invalid file type for ${categoryLabel}. Expected ${expectedExt.toUpperCase()}.`, true);
       return;
+    }
+    if (file.type) {
+      const normalizedMime = String(file.type).toLowerCase();
+      if (!mediaConfig.mimes.includes(normalizedMime)) {
+        setStatus(`Invalid MIME type (${normalizedMime}) for ${expectedExt.toUpperCase()} upload.`, true);
+        return;
+      }
     }
     if (file.size < 1 || file.size > maxBytes) {
       setStatus(`File size exceeds ${isVideo ? '150MB video' : '15MB audio'} limit.`, true);
