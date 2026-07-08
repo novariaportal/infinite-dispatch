@@ -500,12 +500,32 @@ async function fetchJsonWithRetry(url, options = {}, behavior = {}) {
           await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
           continue;
         }
-        throw new Error(`${context} failed with HTTP ${response.status}`);
+        let detail = '';
+        try {
+          const rawBody = await response.text();
+          if (rawBody) {
+            try {
+              const parsedBody = JSON.parse(rawBody);
+              const parsedMessage = typeof parsedBody?.error === 'string'
+                ? parsedBody.error
+                : (typeof parsedBody?.message === 'string' ? parsedBody.message : '');
+              if (parsedMessage) detail = parsedMessage;
+            } catch {
+              detail = rawBody.slice(0, 240);
+            }
+          }
+        } catch {}
+        const detailSuffix = detail ? ` (${detail})` : '';
+        throw new Error(`${context} failed with HTTP ${response.status}${detailSuffix}`);
       }
       return await response.json();
     } catch (error) {
       clearTimeout(timeoutId);
-      lastError = error;
+      if (error?.name === 'AbortError') {
+        lastError = new Error(`${context} timed out after ${timeoutMs}ms`);
+      } else {
+        lastError = error;
+      }
       if (attempt < retries) {
         await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
         continue;
@@ -864,10 +884,11 @@ async function fetchAirlabsRoutes(params = {}) {
     return payload || { data: [], request: { has_more: false } };
   } catch (error) {
     logClientError('AIRLABS_FETCH_FAILED', error, { query: query.toString() });
+    const errorDetail = String(error?.message || '').trim();
     lastAirlabsHealth = {
       code: 'AIRLABS_FETCH_FAILED',
       ok: false,
-      detail: 'Network request to AirLabs edge function failed.'
+      detail: errorDetail || 'Network request to AirLabs edge function failed.'
     };
     renderDiagnosticsPage();
     return { data: [], request: { has_more: false } };
@@ -886,48 +907,75 @@ async function fetchAirlabsCandidateLegs(params = {}) {
   const codes = getAirlineCodes(airline);
   const expectedIata = String(codes?.iata || '').trim().toUpperCase();
   const expectedIcao = String(codes?.icao || '').trim().toUpperCase();
-  if (codes?.iata) baseParams.airline_iata = codes.iata;
-  if (codes?.icao) baseParams.airline_icao = codes.icao;
-  baseParams.limit = AIRLABS_MAX_LIMIT;
+  const filterVariants = [];
+  if (expectedIcao) filterVariants.push({ airline_icao: expectedIcao });
+  if (expectedIata) filterVariants.push({ airline_iata: expectedIata });
+  if (!filterVariants.length) filterVariants.push({});
 
-  const cacheKey = buildAirlabsCacheKey({ ...baseParams, maxRangeNm: Math.floor(maxRangeNm || 0) });
+  const uniqueVariants = [];
+  const seenVariants = new Set();
+  filterVariants.forEach((variant) => {
+    const key = JSON.stringify(variant);
+    if (seenVariants.has(key)) return;
+    seenVariants.add(key);
+    uniqueVariants.push(variant);
+  });
+  uniqueVariants.push({});
+  const requestVariants = uniqueVariants
+    .filter((variant, index) => {
+      if (index === uniqueVariants.length - 1) return true;
+      return Object.keys(variant).length > 0;
+    })
+    .map((variant) => ({ ...baseParams, ...variant, limit: AIRLABS_MAX_LIMIT }));
+
+  const cacheKey = buildAirlabsCacheKey({
+    ...baseParams,
+    airline: airline || '',
+    airline_iata: expectedIata,
+    airline_icao: expectedIcao,
+    maxRangeNm: Math.floor(maxRangeNm || 0)
+  });
   const cachedEntry = airlabsCandidateCache[cacheKey];
   if (cachedEntry && cachedEntry.expiresAt > Date.now()) return cachedEntry.legs;
 
-  let offset = 0;
-  let hasMore = true;
-  let pages = 0;
   const candidates = [];
+  for (const requestParams of requestVariants) {
+    let offset = 0;
+    let hasMore = true;
+    let pages = 0;
 
-  while (hasMore && pages < AIRLABS_FETCH_MAX_PAGES && candidates.length < AIRLABS_MAX_CANDIDATES) {
-    const payload = await fetchAirlabsRoutes({ ...baseParams, offset });
-    const rows = Array.isArray(payload?.data) ? payload.data : [];
-    rows.forEach((row) => {
-      const rowIata = String(row?.airline_iata || '').trim().toUpperCase();
-      const rowIcao = String(row?.airline_icao || '').trim().toUpperCase();
-      const airlineMatched = (!expectedIata && !expectedIcao)
-        || (expectedIata && rowIata === expectedIata)
-        || (expectedIcao && rowIcao === expectedIcao);
-      if (!airlineMatched) return;
+    while (hasMore && pages < AIRLABS_FETCH_MAX_PAGES && candidates.length < AIRLABS_MAX_CANDIDATES) {
+      const payload = await fetchAirlabsRoutes({ ...requestParams, offset });
+      const rows = Array.isArray(payload?.data) ? payload.data : [];
+      rows.forEach((row) => {
+        const rowIata = String(row?.airline_iata || '').trim().toUpperCase();
+        const rowIcao = String(row?.airline_icao || '').trim().toUpperCase();
+        const airlineMatched = (!expectedIata && !expectedIcao)
+          || (expectedIata && rowIata === expectedIata)
+          || (expectedIcao && rowIcao === expectedIcao);
+        if (!airlineMatched) return;
 
-      const origin = String(row?.dep_icao || '').toUpperCase();
-      const destination = String(row?.arr_icao || '').toUpperCase();
-      if (!AIRPORTS[origin] || !AIRPORTS[destination]) return;
-      if (origin === destination) return;
-      if (maxRangeNm && !routeWithinRange(origin, destination, maxRangeNm)) return;
+        const origin = String(row?.dep_icao || '').toUpperCase();
+        const destination = String(row?.arr_icao || '').toUpperCase();
+        if (!AIRPORTS[origin] || !AIRPORTS[destination]) return;
+        if (origin === destination) return;
+        if (maxRangeNm && !routeWithinRange(origin, destination, maxRangeNm)) return;
 
-      candidates.push({
-        origin,
-        destination,
-        flightNumber: row?.flight_number || null,
-        days: Array.isArray(row?.days) ? row.days : [],
-        durationMinutes: Number.isFinite(Number(row?.duration)) ? Number(row.duration) : null
+        candidates.push({
+          origin,
+          destination,
+          flightNumber: row?.flight_number || null,
+          days: Array.isArray(row?.days) ? row.days : [],
+          durationMinutes: Number.isFinite(Number(row?.duration)) ? Number(row.duration) : null
+        });
       });
-    });
 
-    hasMore = Boolean(payload?.request?.has_more);
-    offset += AIRLABS_MAX_LIMIT;
-    pages += 1;
+      hasMore = Boolean(payload?.request?.has_more);
+      offset += AIRLABS_MAX_LIMIT;
+      pages += 1;
+    }
+
+    if (candidates.length) break;
   }
 
   const deduped = [];
@@ -1192,7 +1240,7 @@ async function quickActionStartTracking() {
 function applyAppearanceFromStorage() {
   const savedTheme = localStorage.getItem(THEME_KEY) || 'light';
   const glassEnabled = localStorage.getItem(GLASS_KEY) === '1';
-  const savedLook = localStorage.getItem(LOOK_KEY) || 'classic';
+  const savedLook = localStorage.getItem(LOOK_KEY) || '2.0';
   const savedLookPreset = localStorage.getItem(LOOK_PRESET_KEY) || 'aurora';
 
   document.documentElement.setAttribute('data-theme', savedTheme);
