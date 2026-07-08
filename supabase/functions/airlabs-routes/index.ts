@@ -4,6 +4,7 @@ const AIRLABS_ROUTES_URL = "https://airlabs.co/api/v9/routes";
 const CACHE_TTL_MS = 2 * 60 * 1000;
 const MAX_LIMIT = 50;
 const DEFAULT_LIMIT = 25;
+const UPSTREAM_TIMEOUT_MS = 10000;
 const DEFAULT_FIELDS = [
   "airline_iata",
   "airline_icao",
@@ -153,12 +154,34 @@ serve(async (req) => {
       });
     }
 
-    const upstreamRes = await fetch(`${AIRLABS_ROUTES_URL}?${params.toString()}`, { method: "GET" });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+    const upstreamRes = await fetch(`${AIRLABS_ROUTES_URL}?${params.toString()}`, {
+      method: "GET",
+      headers: {
+        Accept: "application/json"
+      },
+      signal: controller.signal
+    }).finally(() => {
+      clearTimeout(timeoutId);
+    });
     if (!upstreamRes.ok) {
-      return jsonResponse({ error: "AirLabs route request failed." }, 502);
+      const errorText = (await upstreamRes.text().catch(() => "")).slice(0, 300);
+      return jsonResponse({
+        error: "AirLabs route request failed.",
+        upstream_status: upstreamRes.status,
+        upstream_detail: errorText || null
+      }, 502);
     }
 
-    const upstreamPayload = await upstreamRes.json();
+    let upstreamPayload: any = null;
+    try {
+      upstreamPayload = await upstreamRes.json();
+    } catch {
+      return jsonResponse({
+        error: "AirLabs returned a non-JSON response."
+      }, 502);
+    }
     const rows = Array.isArray(upstreamPayload?.response) ? upstreamPayload.response : [];
     const mapped = rows
       .filter((row: unknown) => !!row && typeof row === "object")
@@ -182,6 +205,9 @@ serve(async (req) => {
     return jsonResponse(payload, 200);
   } catch (error) {
     console.error("airlabs-routes error:", error);
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return jsonResponse({ error: `AirLabs request timed out after ${UPSTREAM_TIMEOUT_MS}ms.` }, 504);
+    }
     return jsonResponse({ error: "Failed to fetch routes." }, 500);
   }
 });
